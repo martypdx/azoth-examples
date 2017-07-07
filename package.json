@@ -1,0 +1,35 @@
+{
+  "name": "diamond-example",
+  "version": "1.0.0",
+  "description": "A sample diamond app",
+  "main": "rollup.config.js",
+  "dependencies": {
+    "diamond-ui": "0.0.6",
+    "rxjs-es": "^5.0.0-beta.12"
+  },
+  "devDependencies": {
+    "browser-sync": "^2.18.12",
+    "diamond-compiler": "0.0.10",
+    "eslint": "^4.1.1",
+    "npm-run-all": "^4.0.2",
+    "rollup-plugin-diamond": "0.0.7",
+    "rollup-plugin-node-resolve": "^3.0.0",
+    "rollup-watch": "^4.0.0"
+  },
+  "scripts": {
+    "build": "rollup -c",
+    "build:watch": "npm run build -- -w",
+    "serve": "cd build && browser-sync start --server --files '.'",
+    "start": "run-p build:watch serve"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martypdx/diamond-example.git"
+  },
+  "author": "Marty Nelson <marty@martypdx.com>",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/martypdx/diamond-example/issues"
+  },
+  "homepage": "https://github.com/martypdx/diamond-example#readme"
+}
