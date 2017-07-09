@@ -1,47 +1,30 @@
 /* global firebase */
-import { _, $ } from 'diamond-ui';
 // Why U no rollup :(
 // import * as firebase from 'firebase/app';
-
+import { _, $ } from 'diamond-ui';
 
 var config = {
     databaseURL: 'https://hacker-news.firebaseio.com'
 };
-// wat
+
 firebase.initializeApp(config);
 const fb = firebase.database().ref( 'v0' );
-const items = fb.child('item');
-// items.child('14726528').on('value', snapshot => {
-//     console.log(snapshot.val());
-// });
 
-const fbObservable = ref => {
-    return {
-        child(name) {
-            return fbObservable(ref.child(name));
-        },
-        subscribe(listener) {
-            const fn = snapshot => void listener(snapshot.val());
-
-            ref.on('value', fn);
-
-            return {
-                unsubscribe() {
-                    ref.off('value', fn);
-                }
-            };
-        }
-    };
+Object.getPrototypeOf(fb).subscribe = function subscribe(listener) {
+    const fn = snapshot => void listener(snapshot.val());
+    this.on('value', fn);
+    return { unsubscribe: () => void this.off('value', fn) };
 };
 
 export default () => {
     const type = 'top';
-    const observable = fbObservable(fb.child(`${type}stories`));
-    return show(observable);
+    return show(fb.child(`${type}stories`));
 };
 
+const items = fb.child('item');
+
 const story = key => {
-    const ref = fbObservable(items.child(key));
+    const ref = items.child(key);
     return item(ref);
 };
 

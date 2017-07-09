@@ -1874,30 +1874,20 @@ var config = {
 };
 firebase.initializeApp(config);
 const fb = firebase.database().ref('v0');
-const items = fb.child('item');
-const fbObservable = (ref => {
+Object.getPrototypeOf(fb).subscribe = function subscribe(listener) {
+	const fn = (snapshot => void listener(snapshot.val()));
+	this.on('value', fn);
 	return {
-		child(name) {
-			return fbObservable(ref.child(name));
-		},
-		subscribe(listener) {
-			const fn = snapshot => void listener(snapshot.val());
-			ref.on('value', fn);
-			return {
-				unsubscribe() {
-					ref.off('value', fn);
-				}
-			};
-		}
+		unsubscribe: (() => void this.off('value', fn))
 	};
-});
+};
 var showHN = (() => {
 	const type = 'top';
-	const observable = fbObservable(fb.child(`${type}stories`));
-	return show(observable);
+	return show(fb.child(`${type}stories`));
 });
+const items = fb.child('item');
 const story = (key => {
-	const ref = fbObservable(items.child(key));
+	const ref = items.child(key);
 	return item(ref);
 });
 const item = (__ref0 => {
