@@ -15,9 +15,7 @@ const apps = {
 export default () => {
     const current = apps[window.location.hash.slice(1)];
     const app = new BehaviorSubject(current || hello);
-    const change = value => {
-        app.next(value);
-    };
+    const change = value => void app.next(value);
     
     return App(apps, app, change);
 };
