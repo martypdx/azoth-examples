@@ -13,7 +13,7 @@ const counter = (count=$, change) => {
     const negative = _`
         <p>
             Things are going down :(
-            <button onclick="confirm('feel better?')>panic</button>
+            <button onclick="confirm('feel better?')">panic</button>
         </p>
     `;
 

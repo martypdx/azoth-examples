@@ -1,5 +1,7 @@
 import resolve from 'rollup-plugin-node-resolve';
+// import commonjs from 'rollup-plugin-commonjs';
 import diamond from 'rollup-plugin-diamond';
+
 
 export default {
     entry: 'src/index.js',
@@ -8,6 +10,7 @@ export default {
         diamond(),
         resolve({ jsnext: true, module: true })
     ],
+    // external: ['firebase']
     // sourceMap: true,
-    dest: 'build/bundle.js'
+    dest: 'docs/bundle.js'
 };

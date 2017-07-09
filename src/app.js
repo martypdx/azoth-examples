@@ -2,15 +2,22 @@ import { _, $ } from 'diamond-ui';
 import { BehaviorSubject } from 'rxjs-es/BehaviorSubject';
 import counter from './apps/counter';
 import hello from './apps/hello-world';
+import ghRepo from './apps/github-repo';
+import showHN from './apps/show-hn';
 
 const apps = {
     'Hello World': hello,
-    'Counter': counter
+    'Counter': counter,
+    'GitHub Repos': ghRepo,
+    'Show HN': showHN
 };
 
 export default () => {
-    const app = new BehaviorSubject(hello);
-    const change = value => app.next(value);
+    const current = apps[window.location.hash.slice(1)];
+    const app = new BehaviorSubject(current || hello);
+    const change = value => {
+        app.next(value);
+    };
     
     return App(apps, app, change);
 };

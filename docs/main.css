@@ -1,0 +1,29 @@
+body {
+    font-family: sans-serif;
+}
+
+h1 {
+    color: steelblue;
+}
+
+nav ul {
+    padding: 0;
+}
+
+nav li {
+    display: inline-block;
+    list-style: none;
+    margin: 10px;
+    padding: 10px;
+    background: lightsteelblue;
+    border: 1px solid steelblue;
+    color: white;
+    cursor: pointer;
+}
+
+.card {
+    padding: 10px; 
+    margin: 10px; 
+    background: white; 
+    box-shadow: 0 1px 5px rgba(0,0,0,0.5);
+}
