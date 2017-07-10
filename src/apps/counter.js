@@ -1,7 +1,6 @@
 import { _, $ } from 'diamond-ui';
 import { BehaviorSubject } from 'rxjs-es/BehaviorSubject';
 
-
 export default () => {
     const count = new BehaviorSubject(0);
     const change = x => count.next(count.value + x);

@@ -29,12 +29,12 @@ const story = key => {
 };
 
 const item = ({ title, score }=$) => _`
-    <li><strong>*${score}</strong>${title}</li>
+    <li><strong>*${score}</strong>$${title}</li>
 `;
 
 const show = (topics=$) => _`
     <h3 class="text-center">Show HN</h3>
     <ul>
-        ${topics.map(key => story(key))}#
+        $${topics.map(key => story(key))}#
     </ul>       
 `;

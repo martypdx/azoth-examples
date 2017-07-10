@@ -20,8 +20,8 @@ const repo = ({ html_url: url, full_name: name, stargazers_count: stars, descrip
 `;
 
 const repos = (repos=$) => _`
-    <h3 class="text-center">Found ${repos.length}</h3>
+    <h3 class="text-center">Found $${repos.length}</h3>
     <div class="list">
-        ${repos.map(repo)}#
+        $${repos.map(repo)}#
     </div>      
 `;

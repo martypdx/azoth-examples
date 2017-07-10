@@ -4,7 +4,7 @@
   "description": "A sample diamond app",
   "main": "rollup.config.js",
   "dependencies": {
-    "diamond-ui": "0.0.7",
+    "diamond-ui": "0.0.9",
     "firebase": "^4.1.3",
     "rxjs-es": "^5.0.0-beta.12"
   },
@@ -14,7 +14,7 @@
     "eslint": "^4.1.1",
     "npm-run-all": "^4.0.2",
     "rollup-plugin-commonjs": "^8.0.2",
-    "rollup-plugin-diamond": "0.0.9",
+    "rollup-plugin-diamond": "0.0.11",
     "rollup-plugin-node-resolve": "^3.0.0",
     "rollup-watch": "^4.0.0"
   },

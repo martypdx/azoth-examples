@@ -12,7 +12,7 @@ const hello = (name=$, change) => {
     return _`
         <p>Hello *${name}!</p>
         <div>
-            <input value=${name} onkeyup=${({ target }) => change(target.value)}>
+            <input value=$${name} onkeyup=${({ target }) => change(target.value)}>
         </div>
     `;
 };
