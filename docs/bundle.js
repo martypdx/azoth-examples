@@ -1019,29 +1019,131 @@ const counter$1 = ((count, change) => {
 	return __fragment;
 });
 
+function map$1(project, thisArg) {
+    if (typeof project !== 'function') {
+        throw new TypeError('argument is not a function. Are you looking for `mapTo()`?');
+    }
+    return this.lift(new MapOperator(project, thisArg));
+}
+class MapOperator {
+    constructor(project, thisArg) {
+        this.project = project;
+        this.thisArg = thisArg;
+    }
+    call(subscriber, source) {
+        return source._subscribe(new MapSubscriber(subscriber, this.project, this.thisArg));
+    }
+}
+/**
+ * We need this JSDoc comment for affecting ESDoc.
+ * @ignore
+ * @extends {Ignored}
+ */
+class MapSubscriber extends Subscriber {
+    constructor(destination, project, thisArg) {
+        super(destination);
+        this.project = project;
+        this.count = 0;
+        this.thisArg = thisArg || this;
+    }
+    // NOTE: This looks unoptimized, but it's actually purposefully NOT
+    // using try/catch optimizations.
+    _next(value) {
+        let result;
+        try {
+            result = this.project.call(this.thisArg, value, this.count++);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        this.destination.next(result);
+    }
+}
+//# sourceMappingURL=map.js.map
+
+function pluck(...properties) {
+    const length = properties.length;
+    if (length === 0) {
+        throw new Error('list of properties cannot be empty.');
+    }
+    return map$1.call(this, plucker(properties, length));
+}
+function plucker(props, length) {
+    const mapper = (x) => {
+        let currentProp = x;
+        for (let i = 0; i < length; i++) {
+            const p = currentProp[props[i]];
+            if (typeof p !== 'undefined') {
+                currentProp = p;
+            }
+            else {
+                return undefined;
+            }
+        }
+        return currentProp;
+    };
+    return mapper;
+}
+//# sourceMappingURL=pluck.js.map
+
+Observable.prototype.pluck = pluck;
+//# sourceMappingURL=pluck.js.map
+
 const __render0$2 = renderer(makeFragment(`
-        <p data-bind>Hello <text-node></text-node>!</p>
-        <div>
-            <input value="" onkeyup="" data-bind>
+    <div data-bind>
+        <text-node></text-node>:
+        <input value="" onkeyup="" data-bind>
+    </div>
+`));
+const __render1$2 = renderer(makeFragment(`
+        <p data-bind><text-node></text-node> <text-node></text-node>!</p>
+        <div data-bind>
+            <block-node></block-node>
+            <block-node></block-node>
         </div>
     `));
 const __bind0$2 = textBinder(1);
 const __bind1$2 = attrBinder("value");
 const __bind2$2 = attrBinder("onkeyup");
+const __bind3$1 = textBinder(0);
+const __bind4 = textBinder(2);
+const __bind5 = __blockBinder(1);
+const __bind6 = __blockBinder(3);
+Observable.prototype.child = Observable.prototype.pluck;
 var hello = (() => {
-	const name = new BehaviorSubject('World');
-	const change = value => name.next(value);
-	return hello$1(name, change);
+	const options = new BehaviorSubject({
+		salutation: 'Hello',
+		name: 'World'
+	});
+	const change = value => {
+		options.next(Object.assign({}, options.value, value));
+	};
+	return hello$1(options, change);
 });
-const hello$1 = ((name, change) => {
+const TextInput = ((prop, val, change) => {
 	const __nodes = __render0$2();
-	const __sub0 = name.subscribe(__bind0$2(__nodes[0]));
-	const __sub1 = first(name, __bind1$2(__nodes[1]));
-	__bind2$2(__nodes[1])((({target}) => change(target.value)));
+	__bind0$2(__nodes[0])(prop);
+	__bind1$2(__nodes[1])(val);
+	__bind2$2(__nodes[1])((({target}) => change({
+		[prop]: target.value
+	})));
+	return __nodes[__nodes.length];
+});
+const hello$1 = ((__ref0, change) => {
+	const name = __ref0.child("name");
+	const salutation = __ref0.child("salutation");
+	const __nodes = __render1$2();
+	const __sub0 = salutation.subscribe(__bind3$1(__nodes[0]));
+	const __sub1 = name.subscribe(__bind4(__nodes[0]));
+	const __sub2 = map(salutation, (salutation => TextInput('salutation', salutation, change)), __bind5(__nodes[1]), true);
+	const __sub3 = map(name, (name => TextInput('name', name, change)), __bind6(__nodes[1]), true);
 	const __fragment = __nodes[__nodes.length];
 	__fragment.unsubscribe = () => {
 		__sub0.unsubscribe();
 		__sub1.unsubscribe();
+		__sub2.unsubscribe();
+		__sub3.unsubscribe();
 	};
 	return __fragment;
 });
@@ -1845,7 +1947,7 @@ const __render0$3 = renderer(makeFragment(`
         <p data-bind><text-node></text-node></p>
     </div>
 `));
-const __render1$2 = renderer(makeFragment(`
+const __render1$3 = renderer(makeFragment(`
     <h3 class="text-center" data-bind>Found <text-node></text-node></h3>
     <div class="list" data-bind>
         <block-node></block-node>
@@ -1854,7 +1956,7 @@ const __render1$2 = renderer(makeFragment(`
 const __bind0$3 = attrBinder("href");
 const __bind1$3 = textBinder(0);
 const __bind2$3 = textBinder(1);
-const __bind3$1 = __blockBinder(1);
+const __bind3$2 = __blockBinder(1);
 const SEARCH = 'https://api.github.com/search/repositories';
 var ghRepo = (() => {
 	const req = fetch(`${SEARCH}?q=stars:>5000&sort=stars&per_page=100`).then((r => r.json())).then((r => r.items));
@@ -1869,9 +1971,9 @@ const repo = (({html_url: url, full_name: name, stargazers_count: stars, descrip
 	return __nodes[__nodes.length];
 });
 const repos = (repos => {
-	const __nodes = __render1$2();
+	const __nodes = __render1$3();
 	const __sub0 = map(repos, (repos => repos.length), __bind2$3(__nodes[0]), true);
-	const __sub1 = map(repos, (repos => repos.map(repo)), __bind3$1(__nodes[1]), true);
+	const __sub1 = map(repos, (repos => repos.map(repo)), __bind3$2(__nodes[1]), true);
 	const __fragment = __nodes[__nodes.length];
 	__fragment.unsubscribe = () => {
 		__sub0.unsubscribe();
@@ -1883,7 +1985,7 @@ const repos = (repos => {
 const __render0$4 = renderer(makeFragment(`
     <li data-bind><strong data-bind><text-node></text-node></strong><text-node></text-node></li>
 `));
-const __render1$3 = renderer(makeFragment(`
+const __render1$4 = renderer(makeFragment(`
     <h3 class="text-center">Show HN</h3>
     <ul data-bind>
         <block-node></block-node>
@@ -1927,7 +2029,7 @@ const item = (__ref0 => {
 	return __fragment;
 });
 const show = (topics => {
-	const __nodes = __render1$3();
+	const __nodes = __render1$4();
 	const __sub0 = map(topics, (topics => topics.map((key => story(key)))), __bind2$4(__nodes[0]), true);
 	const __fragment = __nodes[__nodes.length];
 	__fragment.unsubscribe = () => {
