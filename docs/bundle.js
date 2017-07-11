@@ -107,42 +107,43 @@ function textBinder(index) {
     };
 }
 
-function __blockBinder( index ) {
+function __blockBinder(index) {
     return node => {
-        const anchor = node.childNodes[ index ];
+        const anchor = node.childNodes[index];
         const insertBefore = node => anchor.parentNode.insertBefore(node, anchor);
 
-        // TODO: pass in block observe status so we know not to do this work if possible 
-        // insert a top and iterate till anchor to remove
         const top = document.createComment('block start');
         insertBefore(top, anchor);
         
-        let unsubscribe = null;
-        const callUnsubscribe = () => {
-            if(!unsubscribe) return;
+        let unsubscribes = null;
+        const unsubscribe = () => {
+            if(!unsubscribes) return;
             
-            if(Array.isArray(unsubscribe)) {
-                for(let unsub of unsubscribe) unsub.unsubscribe && unsub.unsubscribe();
+            if(Array.isArray(unsubscribes)) {
+                for(let unsub of unsubscribes) unsub.unsubscribe && unsub.unsubscribe();
             } else {
-                unsubscribe.unsubscribe && unsubscribe.unsubscribe();
+                unsubscribes.unsubscribe && unsubscribes.unsubscribe();
             }
         };
         
-        return val => {
+        const observer = val => {
             removePrior(top, anchor);
-            callUnsubscribe();
+            unsubscribe();
             const fragment = toFragment$1(val);
+
             if(Array.isArray(fragment)) {
-                unsubscribe = [];
+                unsubscribes = [];
                 for(let f of fragment) {
-                    if(f.unsubscribe) unsubscribe.push(f.unsubscribe);
+                    if(f.unsubscribe) unsubscribes.push(f.unsubscribe);
                     insertBefore(f, anchor);
                 }
             } else {
-                unsubscribe = fragment.unsubscribe || null;
+                unsubscribes = fragment.unsubscribe || null;
                 insertBefore(fragment, anchor);
             }
         };
+
+        return { observer, unsubscribe };
     };
 }
 
@@ -992,12 +993,12 @@ const __render2 = renderer(makeFragment(`
 const __bind0$1 = textBinder(1);
 const __bind1$1 = __blockBinder(0);
 const __bind2$1 = attrBinder("onclick");
-var counter = (() => {
+var counter = () => {
 	const count = new BehaviorSubject(0);
 	const change = x => count.next(count.value + x);
 	return counter$1(count, change);
-});
-const counter$1 = ((count, change) => {
+};
+const counter$1 = (count, change) => {
 	const positive = () => {
 		const __nodes = __render0$1();
 		return __nodes[__nodes.length];
@@ -1008,16 +1009,18 @@ const counter$1 = ((count, change) => {
 	};
 	const __nodes = __render2();
 	const __sub0 = count.subscribe(__bind0$1(__nodes[0]));
-	const __sub1 = map(count, (count => count >= 0 ? positive : negative), __bind1$1(__nodes[1]));
-	__bind2$1(__nodes[2])((() => change(1)));
-	__bind2$1(__nodes[3])((() => change(-1)));
+	const __sub1b = __bind1$1(__nodes[1]);
+	const __sub1 = map(count, count => count >= 0 ? positive : negative, __sub1b.observer);
+	__bind2$1(__nodes[2])(() => change(1));
+	__bind2$1(__nodes[3])(() => change(-1));
 	const __fragment = __nodes[__nodes.length];
 	__fragment.unsubscribe = () => {
 		__sub0.unsubscribe();
 		__sub1.unsubscribe();
+		__sub1b.unsubscribe();
 	};
 	return __fragment;
-});
+};
 
 function map$1(project, thisArg) {
     if (typeof project !== 'function') {
@@ -1111,7 +1114,7 @@ const __bind4 = textBinder(2);
 const __bind5 = __blockBinder(1);
 const __bind6 = __blockBinder(3);
 Observable.prototype.child = Observable.prototype.pluck;
-var hello = (() => {
+var hello = () => {
 	const options = new BehaviorSubject({
 		salutation: 'Hello',
 		name: 'World'
@@ -1120,33 +1123,37 @@ var hello = (() => {
 		options.next(Object.assign({}, options.value, value));
 	};
 	return hello$1(options, change);
-});
-const TextInput = ((prop, val, change) => {
+};
+const TextInput = (prop, val, change) => {
 	const __nodes = __render0$2();
 	__bind0$2(__nodes[0])(prop);
 	__bind1$2(__nodes[1])(val);
-	__bind2$2(__nodes[1])((({target}) => change({
+	__bind2$2(__nodes[1])(({target}) => change({
 		[prop]: target.value
-	})));
+	}));
 	return __nodes[__nodes.length];
-});
-const hello$1 = ((__ref0, change) => {
+};
+const hello$1 = (__ref0, change) => {
 	const name = __ref0.child("name");
 	const salutation = __ref0.child("salutation");
 	const __nodes = __render1$2();
 	const __sub0 = salutation.subscribe(__bind3$1(__nodes[0]));
 	const __sub1 = name.subscribe(__bind4(__nodes[0]));
-	const __sub2 = map(salutation, (salutation => TextInput('salutation', salutation, change)), __bind5(__nodes[1]), true);
-	const __sub3 = map(name, (name => TextInput('name', name, change)), __bind6(__nodes[1]), true);
+	const __sub2b = __bind5(__nodes[1]);
+	const __sub2 = map(salutation, salutation => TextInput('salutation', salutation, change), __sub2b.observer, true);
+	const __sub3b = __bind6(__nodes[1]);
+	const __sub3 = map(name, name => TextInput('name', name, change), __sub3b.observer, true);
 	const __fragment = __nodes[__nodes.length];
 	__fragment.unsubscribe = () => {
 		__sub0.unsubscribe();
 		__sub1.unsubscribe();
 		__sub2.unsubscribe();
+		__sub2b.unsubscribe();
 		__sub3.unsubscribe();
+		__sub3b.unsubscribe();
 	};
 	return __fragment;
-});
+};
 
 function isPromise(value) {
     return value && typeof value.subscribe !== 'function' && typeof value.then === 'function';
@@ -1958,29 +1965,31 @@ const __bind1$3 = textBinder(0);
 const __bind2$3 = textBinder(1);
 const __bind3$2 = __blockBinder(1);
 const SEARCH = 'https://api.github.com/search/repositories';
-var ghRepo = (() => {
-	const req = fetch(`${SEARCH}?q=stars:>5000&sort=stars&per_page=100`).then((r => r.json())).then((r => r.items));
+var ghRepo = () => {
+	const req = fetch(`${SEARCH}?q=stars:>5000&sort=stars&per_page=100`).then(r => r.json()).then(r => r.items);
 	return repos(Observable.from(req));
-});
-const repo = (({html_url: url, full_name: name, stargazers_count: stars, description}) => {
+};
+const repo = ({html_url: url, full_name: name, stargazers_count: stars, description}) => {
 	const __nodes = __render0$3();
 	__bind0$3(__nodes[0])(url);
 	__bind1$3(__nodes[0])(name);
 	__bind1$3(__nodes[1])(stars);
 	__bind1$3(__nodes[2])(description);
 	return __nodes[__nodes.length];
-});
-const repos = (repos => {
+};
+const repos = repos => {
 	const __nodes = __render1$3();
-	const __sub0 = map(repos, (repos => repos.length), __bind2$3(__nodes[0]), true);
-	const __sub1 = map(repos, (repos => repos.map(repo)), __bind3$2(__nodes[1]), true);
+	const __sub0 = map(repos, repos => repos.length, __bind2$3(__nodes[0]), true);
+	const __sub1b = __bind3$2(__nodes[1]);
+	const __sub1 = map(repos, repos => repos.map(repo), __sub1b.observer, true);
 	const __fragment = __nodes[__nodes.length];
 	__fragment.unsubscribe = () => {
 		__sub0.unsubscribe();
 		__sub1.unsubscribe();
+		__sub1b.unsubscribe();
 	};
 	return __fragment;
-});
+};
 
 const __render0$4 = renderer(makeFragment(`
     <li data-bind><strong data-bind><text-node></text-node></strong><text-node></text-node></li>
@@ -2000,22 +2009,22 @@ var config = {
 firebase.initializeApp(config);
 const fb = firebase.database().ref('v0');
 Object.getPrototypeOf(fb).subscribe = function subscribe(listener) {
-	const fn = (snapshot => void listener(snapshot.val()));
+	const fn = snapshot => void listener(snapshot.val());
 	this.on('value', fn);
 	return {
-		unsubscribe: (() => void this.off('value', fn))
+		unsubscribe: () => void this.off('value', fn)
 	};
 };
-var showHN = (() => {
+var showHN = () => {
 	const type = 'top';
 	return show(fb.child(`${type}stories`));
-});
+};
 const items = fb.child('item');
-const story = (key => {
+const story = key => {
 	const ref = items.child(key);
 	return item(ref);
-});
-const item = (__ref0 => {
+};
+const item = __ref0 => {
 	const title = __ref0.child("title");
 	const score = __ref0.child("score");
 	const __nodes = __render0$4();
@@ -2027,16 +2036,18 @@ const item = (__ref0 => {
 		__sub1.unsubscribe();
 	};
 	return __fragment;
-});
-const show = (topics => {
+};
+const show = topics => {
 	const __nodes = __render1$4();
-	const __sub0 = map(topics, (topics => topics.map((key => story(key)))), __bind2$4(__nodes[0]), true);
+	const __sub0b = __bind2$4(__nodes[0]);
+	const __sub0 = map(topics, topics => topics.map(key => story(key)), __sub0b.observer, true);
 	const __fragment = __nodes[__nodes.length];
 	__fragment.unsubscribe = () => {
 		__sub0.unsubscribe();
+		__sub0b.unsubscribe();
 	};
 	return __fragment;
-});
+};
 
 const __render0 = renderer(makeFragment(`
                     <li onclick="" data-bind><text-node></text-node></li>
@@ -2063,27 +2074,31 @@ const apps = {
 	'GitHub Repos': ghRepo,
 	'Show HN': showHN
 };
-var app = (() => {
+var app = () => {
 	const current = apps[window.location.hash.slice(1)];
 	const app = new BehaviorSubject(current || hello);
 	const change = value => void app.next(value);
 	return App(apps, app, change);
-});
-const App = ((apps, app, change) => {
+};
+const App = (apps, app, change) => {
 	const __nodes = __render1();
-	__bind2(__nodes[0])(Object.keys(apps).map((name => {
+	const __sub0b = __bind2(__nodes[0]);
+	__sub0b.observer(Object.keys(apps).map(name => {
 		const __nodes = __render0();
-		__bind0(__nodes[0])((() => change(apps[name])));
+		__bind0(__nodes[0])(() => change(apps[name]));
 		__bind1(__nodes[0])(name);
 		return __nodes[__nodes.length];
-	})));
-	const __sub1 = app.subscribe(__bind3(__nodes[1]));
+	}));
+	const __sub1b = __bind3(__nodes[1]);
+	const __sub1 = app.subscribe(__sub1b.observer);
 	const __fragment = __nodes[__nodes.length];
 	__fragment.unsubscribe = () => {
+		__sub0b.unsubscribe();
 		__sub1.unsubscribe();
+		__sub1b.unsubscribe();
 	};
 	return __fragment;
-});
+};
 
 const root = document.getElementById('root');
 root.appendChild(app());
