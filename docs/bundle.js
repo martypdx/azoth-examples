@@ -159,6 +159,8 @@ const removePrior = (top, anchor) => {
     }
 };
 
+// runtime use:
+
 let objectTypes = {
     'boolean': false,
     'function': true,
@@ -167,24 +169,29 @@ let objectTypes = {
     'string': false,
     'undefined': false
 };
-let root$1 = (objectTypes[typeof self] && self) || (objectTypes[typeof window] && window);
+let root = (objectTypes[typeof self] && self) || (objectTypes[typeof window] && window);
 let freeGlobal = objectTypes[typeof global] && global;
 if (freeGlobal && (freeGlobal.global === freeGlobal || freeGlobal.window === freeGlobal)) {
-    root$1 = freeGlobal;
+    root = freeGlobal;
 }
+//# sourceMappingURL=root.js.map
 
 function isFunction(x) {
     return typeof x === 'function';
 }
+//# sourceMappingURL=isFunction.js.map
 
 const isArray = Array.isArray || ((x) => x && typeof x.length === 'number');
+//# sourceMappingURL=isArray.js.map
 
 function isObject(x) {
     return x != null && typeof x === 'object';
 }
+//# sourceMappingURL=isObject.js.map
 
 // typeof any so that it we don't have to cast when comparing a result to the error object
 var errorObject = { e: {} };
+//# sourceMappingURL=errorObject.js.map
 
 let tryCatchTarget;
 function tryCatcher() {
@@ -200,6 +207,8 @@ function tryCatch(fn) {
     tryCatchTarget = fn;
     return tryCatcher;
 }
+
+//# sourceMappingURL=tryCatch.js.map
 
 /**
  * An error thrown when one or more errors have occurred during the
@@ -217,19 +226,8 @@ class UnsubscriptionError extends Error {
         this.message = err.message;
     }
 }
+//# sourceMappingURL=UnsubscriptionError.js.map
 
-/**
- * Represents a disposable resource, such as the execution of an Observable. A
- * Subscription has one important method, `unsubscribe`, that takes no argument
- * and just disposes the resource held by the subscription.
- *
- * Additionally, subscriptions may be grouped together through the `add()`
- * method, which will attach a child Subscription to the current Subscription.
- * When a Subscription is unsubscribed, all its children (and its grandchildren)
- * will be unsubscribed as well.
- *
- * @class Subscription
- */
 class Subscription {
     /**
      * @param {function(): void} [unsubscribe] A function describing how to
@@ -361,6 +359,7 @@ Subscription.EMPTY = (function (empty) {
     empty.closed = true;
     return empty;
 }(new Subscription()));
+//# sourceMappingURL=Subscription.js.map
 
 const empty = {
     closed: true,
@@ -368,21 +367,13 @@ const empty = {
     error(err) { throw err; },
     complete() { }
 };
+//# sourceMappingURL=Observer.js.map
 
-const Symbol = root$1.Symbol;
+const Symbol = root.Symbol;
 const $$rxSubscriber = (typeof Symbol === 'function' && typeof Symbol.for === 'function') ?
     Symbol.for('rxSubscriber') : '@@rxSubscriber';
+//# sourceMappingURL=rxSubscriber.js.map
 
-/**
- * Implements the {@link Observer} interface and extends the
- * {@link Subscription} class. While the {@link Observer} is the public API for
- * consuming the values of an {@link Observable}, all Observers get converted to
- * a Subscriber, in order to provide Subscription-like capabilities such as
- * `unsubscribe`. Subscriber is a common type in RxJS, and crucial for
- * implementing operators, but it is rarely used as a public API.
- *
- * @class Subscriber<T>
- */
 class Subscriber extends Subscription {
     /**
      * @param {Observer|function(value: T): void} [destinationOrNext] A partially
@@ -606,6 +597,7 @@ class SafeSubscriber extends Subscriber {
         _parent.unsubscribe();
     }
 }
+//# sourceMappingURL=Subscriber.js.map
 
 function toSubscriber(nextOrObserver, error, complete) {
     if (nextOrObserver) {
@@ -621,6 +613,7 @@ function toSubscriber(nextOrObserver, error, complete) {
     }
     return new Subscriber(nextOrObserver, error, complete);
 }
+//# sourceMappingURL=toSubscriber.js.map
 
 function getSymbolObservable(context) {
     let $$observable;
@@ -639,14 +632,9 @@ function getSymbolObservable(context) {
     }
     return $$observable;
 }
-const $$observable = getSymbolObservable(root$1);
+const $$observable = getSymbolObservable(root);
+//# sourceMappingURL=observable.js.map
 
-/**
- * A representation of any set of values over any amount of time. This the most basic building block
- * of RxJS.
- *
- * @class Observable<T>
- */
 class Observable {
     /**
      * @constructor
@@ -711,11 +699,11 @@ class Observable {
      */
     forEach(next, PromiseCtor) {
         if (!PromiseCtor) {
-            if (root$1.Rx && root$1.Rx.config && root$1.Rx.config.Promise) {
-                PromiseCtor = root$1.Rx.config.Promise;
+            if (root.Rx && root.Rx.config && root.Rx.config.Promise) {
+                PromiseCtor = root.Rx.config.Promise;
             }
-            else if (root$1.Promise) {
-                PromiseCtor = root$1.Promise;
+            else if (root.Promise) {
+                PromiseCtor = root.Promise;
             }
         }
         if (!PromiseCtor) {
@@ -773,6 +761,7 @@ class Observable {
 Observable.create = (subscribe) => {
     return new Observable(subscribe);
 };
+//# sourceMappingURL=Observable.js.map
 
 /**
  * An error thrown when an action is invalid because the object has been
@@ -791,12 +780,8 @@ class ObjectUnsubscribedError extends Error {
         this.message = err.message;
     }
 }
+//# sourceMappingURL=ObjectUnsubscribedError.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @ignore
- * @extends {Ignored}
- */
 class SubjectSubscription extends Subscription {
     constructor(subject, subscriber) {
         super();
@@ -821,10 +806,8 @@ class SubjectSubscription extends Subscription {
         }
     }
 }
+//# sourceMappingURL=SubjectSubscription.js.map
 
-/**
- * @class SubjectSubscriber<T>
- */
 class SubjectSubscriber extends Subscriber {
     constructor(destination) {
         super(destination);
@@ -960,10 +943,8 @@ class AnonymousSubject extends Subject {
         }
     }
 }
+//# sourceMappingURL=Subject.js.map
 
-/**
- * @class BehaviorSubject<T>
- */
 class BehaviorSubject extends Subject {
     constructor(_value) {
         super();
@@ -994,6 +975,7 @@ class BehaviorSubject extends Subject {
         super.next(this._value = value);
     }
 }
+//# sourceMappingURL=BehaviorSubject.js.map
 
 const __render0$1 = renderer(makeFragment(`<p>Things are looking up!</p>`));
 const __render1$1 = renderer(makeFragment(`
@@ -1040,39 +1022,6 @@ const counter$1 = (count, change) => {
 	return __fragment;
 };
 
-/**
- * Applies a given `project` function to each value emitted by the source
- * Observable, and emits the resulting values as an Observable.
- *
- * <span class="informal">Like [Array.prototype.map()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map),
- * it passes each source value through a transformation function to get
- * corresponding output values.</span>
- *
- * <img src="./img/map.png" width="100%">
- *
- * Similar to the well known `Array.prototype.map` function, this operator
- * applies a projection to each value and emits that projection in the output
- * Observable.
- *
- * @example <caption>Map every every click to the clientX position of that click</caption>
- * var clicks = Rx.Observable.fromEvent(document, 'click');
- * var positions = clicks.map(ev => ev.clientX);
- * positions.subscribe(x => console.log(x));
- *
- * @see {@link mapTo}
- * @see {@link pluck}
- *
- * @param {function(value: T, index: number): R} project The function to apply
- * to each `value` emitted by the source Observable. The `index` parameter is
- * the number `i` for the i-th emission that has happened since the
- * subscription, starting from the number `0`.
- * @param {any} [thisArg] An optional argument to define what `this` is in the
- * `project` function.
- * @return {Observable<R>} An Observable that emits the values from the source
- * Observable transformed by the given `project` function.
- * @method map
- * @owner Observable
- */
 function map$1(project, thisArg) {
     if (typeof project !== 'function') {
         throw new TypeError('argument is not a function. Are you looking for `mapTo()`?');
@@ -1114,34 +1063,8 @@ class MapSubscriber extends Subscriber {
         this.destination.next(result);
     }
 }
+//# sourceMappingURL=map.js.map
 
-/**
- * Maps each source value (an object) to its specified nested property.
- *
- * <span class="informal">Like {@link map}, but meant only for picking one of
- * the nested properties of every emitted object.</span>
- *
- * <img src="./img/pluck.png" width="100%">
- *
- * Given a list of strings describing a path to an object property, retrieves
- * the value of a specified nested property from all values in the source
- * Observable. If a property can't be resolved, it will return `undefined` for
- * that value.
- *
- * @example <caption>Map every every click to the tagName of the clicked target element</caption>
- * var clicks = Rx.Observable.fromEvent(document, 'click');
- * var tagNames = clicks.pluck('target', 'tagName');
- * tagNames.subscribe(x => console.log(x));
- *
- * @see {@link map}
- *
- * @param {...string} properties The nested properties to pluck from each source
- * value (an object).
- * @return {Observable} Returns a new Observable of property values from the
- * source values.
- * @method pluck
- * @owner Observable
- */
 function pluck(...properties) {
     const length = properties.length;
     if (length === 0) {
@@ -1165,8 +1088,10 @@ function plucker(props, length) {
     };
     return mapper;
 }
+//# sourceMappingURL=pluck.js.map
 
 Observable.prototype.pluck = pluck;
+//# sourceMappingURL=pluck.js.map
 
 const __render0$2 = renderer(makeFragment(`
     <div data-bind>
@@ -1233,12 +1158,8 @@ const hello$1 = (__ref0, change) => {
 function isPromise(value) {
     return value && typeof value.subscribe !== 'function' && typeof value.then === 'function';
 }
+//# sourceMappingURL=isPromise.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class PromiseObservable extends Observable {
     constructor(promise, scheduler) {
         super();
@@ -1299,7 +1220,7 @@ class PromiseObservable extends Observable {
                 })
                     .then(null, err => {
                     // escape the promise trap, throw unhandled errors
-                    root$1.setTimeout(() => { throw err; });
+                    root.setTimeout(() => { throw err; });
                 });
             }
         }
@@ -1323,7 +1244,7 @@ class PromiseObservable extends Observable {
                 })
                     .then(null, (err) => {
                     // escape the promise trap, throw unhandled errors
-                    root$1.setTimeout(() => { throw err; });
+                    root.setTimeout(() => { throw err; });
                 });
             }
         }
@@ -1342,9 +1263,10 @@ function dispatchError(arg) {
         subscriber.error(err);
     }
 }
+//# sourceMappingURL=PromiseObservable.js.map
 
 let $$iterator;
-const Symbol$1 = root$1.Symbol;
+const Symbol$1 = root.Symbol;
 if (typeof Symbol$1 === 'function') {
     if (Symbol$1.iterator) {
         $$iterator = Symbol$1.iterator;
@@ -1354,16 +1276,16 @@ if (typeof Symbol$1 === 'function') {
     }
 }
 else {
-    if (root$1.Set && typeof new root$1.Set()['@@iterator'] === 'function') {
+    if (root.Set && typeof new root.Set()['@@iterator'] === 'function') {
         // Bug for mozilla version
         $$iterator = '@@iterator';
     }
-    else if (root$1.Map) {
+    else if (root.Map) {
         // es6-shim specific logic
-        let keys = Object.getOwnPropertyNames(root$1.Map.prototype);
+        let keys = Object.getOwnPropertyNames(root.Map.prototype);
         for (let i = 0; i < keys.length; ++i) {
             let key = keys[i];
-            if (key !== 'entries' && key !== 'size' && root$1.Map.prototype[key] === root$1.Map.prototype['entries']) {
+            if (key !== 'entries' && key !== 'size' && root.Map.prototype[key] === root.Map.prototype['entries']) {
                 $$iterator = key;
                 break;
             }
@@ -1373,12 +1295,8 @@ else {
         $$iterator = '@@iterator';
     }
 }
+//# sourceMappingURL=iterator.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class IteratorObservable extends Observable {
     constructor(iterator, scheduler) {
         super();
@@ -1500,7 +1418,7 @@ function toLength(o) {
     return len;
 }
 function numberIsFinite(value) {
-    return typeof value === 'number' && root$1.isFinite(value);
+    return typeof value === 'number' && root.isFinite(value);
 }
 function sign(value) {
     let valueAsNumber = +value;
@@ -1512,12 +1430,8 @@ function sign(value) {
     }
     return valueAsNumber < 0 ? -1 : 1;
 }
+//# sourceMappingURL=IteratorObservable.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class ScalarObservable extends Observable {
     constructor(value, scheduler) {
         super();
@@ -1560,12 +1474,8 @@ class ScalarObservable extends Observable {
         }
     }
 }
+//# sourceMappingURL=ScalarObservable.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class EmptyObservable extends Observable {
     constructor(scheduler) {
         super();
@@ -1625,16 +1535,13 @@ class EmptyObservable extends Observable {
         }
     }
 }
+//# sourceMappingURL=EmptyObservable.js.map
 
 function isScheduler(value) {
     return value && typeof value.schedule === 'function';
 }
+//# sourceMappingURL=isScheduler.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class ArrayObservable extends Observable {
     constructor(array, scheduler) {
         super();
@@ -1734,12 +1641,8 @@ class ArrayObservable extends Observable {
         }
     }
 }
+//# sourceMappingURL=ArrayObservable.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class ArrayLikeObservable extends Observable {
     constructor(arrayLike, scheduler) {
         super();
@@ -1792,21 +1695,8 @@ class ArrayLikeObservable extends Observable {
         }
     }
 }
+//# sourceMappingURL=ArrayLikeObservable.js.map
 
-/**
- * Represents a push-based event or value that an {@link Observable} can emit.
- * This class is particularly useful for operators that manage notifications,
- * like {@link materialize}, {@link dematerialize}, {@link observeOn}, and
- * others. Besides wrapping the actual delivered value, it also annotates it
- * with metadata of, for instance, what type of push message it is (`next`,
- * `error`, or `complete`).
- *
- * @see {@link materialize}
- * @see {@link dematerialize}
- * @see {@link observeOn}
- *
- * @class Notification<T>
- */
 class Notification {
     constructor(kind, value, exception) {
         this.kind = kind;
@@ -1915,17 +1805,7 @@ class Notification {
 }
 Notification.completeNotification = new Notification('C');
 Notification.undefinedValueNotification = new Notification('N', undefined);
-
-/**
- * @see {@link Notification}
- *
- * @param scheduler
- * @param delay
- * @return {Observable<R>|WebSocketSubject<T>|Observable<T>}
- * @method observeOn
- * @owner Observable
- */
-
+//# sourceMappingURL=Notification.js.map
 
 /**
  * We need this JSDoc comment for affecting ESDoc.
@@ -1961,6 +1841,7 @@ class ObserveOnMessage {
         this.destination = destination;
     }
 }
+//# sourceMappingURL=observeOn.js.map
 
 const isArrayLike = ((x) => x && typeof x.length === 'number');
 /**
@@ -2058,10 +1939,13 @@ class FromObservable extends Observable {
         }
     }
 }
+//# sourceMappingURL=FromObservable.js.map
 
 const from = FromObservable.create;
+//# sourceMappingURL=from.js.map
 
 Observable.from = from;
+//# sourceMappingURL=from.js.map
 
 const __render0$3 = renderer(makeFragment(`
     <div class="card">
@@ -2216,5 +2100,4 @@ const App = (apps, app, change) => {
 	return __fragment;
 };
 
-const root = document.getElementById('root');
-root.appendChild(app());
+document.getElementById('app').appendChild(app());
