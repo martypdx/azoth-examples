@@ -19,7 +19,7 @@
         "no-console": "off",
         "no-cond-assign": "off",
         "indent": [
-            "error",
+            "off",
             4,
             { "SwitchCase": 1 }
         ],
