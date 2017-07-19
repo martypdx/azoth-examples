@@ -1,13 +1,13 @@
 import resolve from 'rollup-plugin-node-resolve';
 // import commonjs from 'rollup-plugin-commonjs';
-import diamond from 'rollup-plugin-diamond';
+import azoth from 'rollup-plugin-azoth';
 
 
 export default {
     entry: 'src/index.js',
     format: 'es',
     plugins: [
-        diamond(),
+        azoth(),
         resolve({ jsnext: true, module: true })
     ],
     // external: ['firebase']

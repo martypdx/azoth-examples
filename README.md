@@ -1,2 +1,2 @@
-# diamond-example
-Example app using diamond
+# azoth-examples
+Example app using azoth

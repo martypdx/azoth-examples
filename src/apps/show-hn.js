@@ -1,7 +1,7 @@
 /* global firebase */
 // Why U no rollup :(
 // import * as firebase from 'firebase/app';
-import { _, $ } from 'diamond-ui';
+import { _, $ } from 'azoth';
 
 var config = {
     databaseURL: 'https://hacker-news.firebaseio.com'
@@ -25,16 +25,50 @@ const items = fb.child('item');
 
 const story = key => {
     const ref = items.child(key);
-    return item(ref);
+    return card(ref);
 };
 
-const item = ({ title, score }=$) => _`
-    <li><strong>*${score}</strong>$${title}</li>
+const comment = key => {
+    const ref = items.child(key);
+    return note(ref);
+};
+
+const byline = ({ type, by }) => _`
+    <p>$${type} by <em>$${by}</em></p>
+`;
+
+const note = (reply=$) => _`
+    <div>
+        <div>$${reply ? reply.text : null}</div>
+        ${byline(reply)}#
+    </div>
+`;
+
+const card = (item=$) => _`
+    <li>
+        <div class="card">
+            <a href=$${item.url} target="_blank">$${item.title}</a>
+            🌟<strong>$${item.score}</strong>
+            ${byline(item)}#
+            $${ item.kids ? item.kids.length : 0 } comments
+            <ul>
+            $${
+                item.kids ? item.kids.map(kid => comment(kid)) : []
+            }#
+            </ul>
+        </div>
+    </li>
 `;
 
 const show = (topics=$) => _`
     <h3 class="text-center">Show HN</h3>
+    <h2>*${topics.length} stories</h2>
     <ul>
-        $${topics.map(key => story(key))}#
+        $${(() =>{
+            console.time('shn render');
+            const mapped = topics.map(key => story(key));
+            console.timeEnd('shn render');
+            return mapped;
+        })()}#
     </ul>       
 `;

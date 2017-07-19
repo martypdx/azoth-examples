@@ -1,20 +1,19 @@
 {
-  "name": "diamond-example",
+  "name": "azoth-examples",
   "version": "1.0.0",
-  "description": "A sample diamond app",
+  "description": "A sample azoth app",
   "main": "rollup.config.js",
   "dependencies": {
-    "diamond-ui": "0.0.10",
+    "azoth": "0.0.12",
     "firebase": "^4.1.3",
     "rxjs-es": "^5.0.0-beta.12"
   },
   "devDependencies": {
     "browser-sync": "^2.18.12",
-    "diamond-compiler": "0.0.10",
     "eslint": "^4.1.1",
     "npm-run-all": "^4.0.2",
+    "rollup-plugin-azoth": "0.0.22",
     "rollup-plugin-commonjs": "^8.0.2",
-    "rollup-plugin-diamond": "0.0.15",
     "rollup-plugin-node-resolve": "^3.0.0",
     "rollup-watch": "^4.0.0"
   },
@@ -23,16 +22,16 @@
     "build:watch": "npm run build -- -w",
     "serve": "cd docs && browser-sync start --server --files '.'",
     "start": "run-p build:watch serve",
-    "update-diamond": "npm un rollup-plugin-diamond -D && npm i rollup-plugin-diamond -D && npm un diamond-ui -S && npm i diamond-ui -S"
+    "update-azoth": "npm un rollup-plugin-azoth -D && npm i rollup-plugin-azoth -D && npm un azoth -S && npm i azoth -S"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/martypdx/diamond-example.git"
+    "url": "git+https://github.com/martypdx/azoth-examples.git"
   },
   "author": "Marty Nelson <marty@martypdx.com>",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/martypdx/diamond-example/issues"
+    "url": "https://github.com/martypdx/azoth-examples/issues"
   },
-  "homepage": "https://github.com/martypdx/diamond-example#readme"
+  "homepage": "https://github.com/martypdx/azoth-examples#readme"
 }

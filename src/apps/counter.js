@@ -1,4 +1,4 @@
-import { _, $ } from 'diamond-ui';
+import { _, $ } from 'azoth';
 import { BehaviorSubject } from 'rxjs-es/BehaviorSubject';
 
 export default () => {
