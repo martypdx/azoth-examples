@@ -1,42 +1,175 @@
-function renderer(fragment) {
+class ObservableValue {
+    constructor(value) {
+        this.value = value;
+        this.subscribers = null;
+    }
 
-    init(fragment);
+    subscribe(subscriber) {
+        if(!this.subscribers) {
+            this.subscribers = subscriber;
+        } 
+        else if(Array.isArray(this.subscribers)) {
+            this.subscribers.push(subscriber);
+        }
+        else {
+            this.subscribers = [this.subscribers, subscriber];
+        }
 
-    return function render() {
-        const clone = fragment.cloneNode(true);
-        const nodes = clone.querySelectorAll('[data-bind]');
-        nodes[ nodes.length ] = clone;
-        return nodes;
-    };
+        subscriber(this.value);
+
+        return {
+            unsubscribe: () => {
+                this.unsubscribe(subscriber);
+            }
+        };
+    }
+
+    destroy() {
+        this.subscribers = null;
+    }
+
+    unsubscribe(subscriber) {
+        const { subscribers } = this;        
+        if(!subscribers) return;
+        else if(Array.isArray(subscribers)) {
+            const index = subscribers.indexOf(subscriber);
+            if(index > -1) subscribers.splice(index, 1);
+        }
+        else {
+            this.subscribers = null;
+        }    
+    }
+
+    next(value) {
+        if(this.value === value) return;
+        this.value = value;
+        
+        const { subscribers } = this;
+        if(!subscribers) return;
+        else if(Array.isArray(subscribers)) {
+            for(let i = 0; i < subscribers.length; i++) {
+                subscribers[i](value);
+            }
+        }
+        else {
+            subscribers(value);
+        }      
+    }
 }
 
-function init(fragment) {
+function removeBlocks(blocks) {
+    for(let i = 0; i < blocks.length; i++) {
+        const { nodes, unsubscribe, index } = blocks[i];
+        if(index) index.destroy();
+
+        if(Array.isArray(nodes)) {
+            for(let c = 0; c < nodes.length; c++) nodes[c].remove();
+        } 
+        else nodes.remove();
+
+        unsubscribe && unsubscribe();
+    }
+}
+
+function makeOverlay(observable) {
+    return new Overlay(observable);
+}
+
+class Overlay {
+    
+    constructor(observable) {
+        this._observable = observable;
+        this._blocks = [];
+    }
+
+    onanchor(anchor) {
+        const { _blocks: blocks } = this;
+        
+        this._observable.subscribe(array => {
+            const parent = anchor.parentNode;
+            const max = Math.max(blocks.length, array.length);
+            for(let i = 0; i < max; i++) {
+                const value = array[i];
+                const block = blocks[i];
+                if(!block) {
+                    const observable = new ObservableValue(value); 
+                    let fragment = this.map(observable, i);
+                    if(typeof fragment === 'function') fragment = fragment();
+                    
+                    const { childNodes, unsubscribe } = fragment;
+
+                    let nodes = null;
+                    if(childNodes.length > 1) {
+                        nodes = new Array(childNodes.length);
+                        for(let c = 0; c < childNodes.length; c++) nodes[c] = childNodes[c];
+                    }
+                    else {
+                        nodes = childNodes[0];
+                    }
+
+                    blocks[i] = { nodes, unsubscribe, observable };
+                    parent.insertBefore(fragment, anchor);
+                }
+                else if(array.length > i) {
+                    block.observable.next(value);
+                }
+                else {
+                    const { nodes, unsubscribe, observable } = blocks[i];
+                    if(observable) observable.destroy();
+            
+                    if(Array.isArray(nodes)) {
+                        for(let c = 0; c < nodes.length; c++) nodes[c].remove();
+                    } 
+                    else nodes.remove();
+            
+                    unsubscribe && unsubscribe();
+                }
+            }
+            blocks.length = array.length;
+        });
+    }
+
+    unsubscribe() {        
+        removeBlocks$1(this._blocks);
+    }
+}
+
+function removeBlocks$1(blocks) {
+    for(let i = 0; i < blocks.length; i++) {
+        const { nodes, unsubscribe, observable } = blocks[i];
+        if(observable) observable.destroy();
+
+        if(Array.isArray(nodes)) {
+            for(let c = 0; c < nodes.length; c++) nodes[c].remove();
+        } 
+        else nodes.remove();
+
+        unsubscribe && unsubscribe();
+    }
+}
+
+const makeTemplate = html => {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    return template.content;
+};
+
+function renderer(fragment) {
+
     const nodes = fragment.querySelectorAll('text-node');
-    for(var i = 0, node = nodes[i]; i < nodes.length; node = nodes[++i]) {
+    let node = null;
+    for(var i = 0; i < nodes.length; node = nodes[++i]) {
         node = nodes[i];
         node.parentNode.replaceChild(document.createTextNode(''), node);
     }
-}
 
-function makeFragment(html) {
-    return toFragment(makeDiv(html).childNodes);
-}
-
-function toFragment(childNodes) {
-    const fragment = document.createDocumentFragment();
-    
-    let node;
-    while(node = childNodes[0]) {
-        fragment.appendChild(node);
-    }
-
-    return fragment;
-}
-
-const div = document.createElement('div');
-function makeDiv(html) {
-    div.innerHTML = html;
-    return div;
+    return function render() {
+        const clone = fragment.cloneNode(true);
+        return { 
+            __fragment: clone, 
+            __nodes: clone.querySelectorAll('[data-bind]') 
+        };
+    };
 }
 
 function map(observable, map, subscriber, once = false) {
@@ -65,64 +198,69 @@ function map(observable, map, subscriber, once = false) {
 
 const isProp = (name, node) => name in node;
 
-function attrBinder(name) {
-    return node => {
-        return isProp(name, node)
-            ? val => node[name] = val
-            : val => node.setAttribute(name, val);
-    };
+function attrBinder(node, name) {
+    return isProp(name, node)
+        ? val => node[name] = val
+        : val => node.setAttribute(name, val);
 }
 
-function textBinder(index) {
-    return node => {
-        const text = node.childNodes[index];
-        return val => text.nodeValue = val;
-    };
+function textBinder(node) {
+    return val => node.nodeValue = val;
 }
 
-function __blockBinder(index) {
-    return node => {
-        const anchor = node.childNodes[index];
-        const insertBefore = node => anchor.parentNode.insertBefore(node, anchor);
+function __blockBinder(anchor) {
+    const insertBefore = node => anchor.parentNode.insertBefore(node, anchor);
 
-        const top = document.createComment(' block start ');
-        insertBefore(top, anchor);
+    const top = document.createComment(' block start ');
+    insertBefore(top, anchor);
+    
+    let unsubscribes = null;
+    const unsubscribe = () => {
+        if(!unsubscribes) return;
         
-        let unsubscribes = null;
-        const unsubscribe = () => {
-            if(!unsubscribes) return;
-            
-            if(Array.isArray(unsubscribes)) {
-                for(let unsub of unsubscribes) unsub.unsubscribe && unsub.unsubscribe();
-            } else {
-                unsubscribes.unsubscribe && unsubscribes.unsubscribe();
+        if(Array.isArray(unsubscribes)) {
+            for(let i = 0; i < unsubscribes.length; i++) {
+                const unsub = unsubscribes[i];
+                if(unsub.unsubscribe) unsub.unsubscribe();
             }
-        };
-        
-        const observer = val => {
-            removePrior(top, anchor);
-            unsubscribe();
-            const fragment = toFragment$1(val);
-
-            if(Array.isArray(fragment)) {
-                unsubscribes = [];
-                for(let f of fragment) {
-                    if(f.unsubscribe) unsubscribes.push(f.unsubscribe);
-                    insertBefore(f, anchor);
-                }
-            } else {
-                unsubscribes = fragment.unsubscribe || null;
-                insertBefore(fragment, anchor);
-            }
-        };
-
-        return { observer, unsubscribe };
+        } else {
+            unsubscribes.unsubscribe && unsubscribes.unsubscribe();
+        }
+        unsubscribes = null;
     };
+    
+    const observer = val => {
+        removePrior(top, anchor);
+        unsubscribe();
+        if(!val) return;
+        
+        const fragment = toFragment(val);
+
+        if(Array.isArray(fragment)) {
+            unsubscribes = [];
+            let toAppend = null;
+            for(let i = 0; i < fragment.length; i++) {
+                const f = toFragment(fragment[i]);
+                if(!f) continue;
+
+                if(f.unsubscribe) unsubscribes.push(f.unsubscribe);
+                
+                if(toAppend === null) toAppend = f;
+                else toAppend.appendChild(f);
+            }
+            if(toAppend) insertBefore(toAppend, anchor);
+        } else {
+            if(!fragment) return;
+            unsubscribes = fragment.unsubscribe || null;
+            insertBefore(fragment, anchor);
+        }
+    };
+
+    return { observer, unsubscribe };
 }
 
-const toFragment$1 = val => typeof val === 'function' ? val() : val;
+const toFragment = val => typeof val === 'function' ? val() : val;
 
-// TODO: need to unsubscribe to prior fragment
 const removePrior = (top, anchor) => {
     let sibling = top.nextSibling;
     while(sibling && sibling !== anchor) {
@@ -131,6 +269,12 @@ const removePrior = (top, anchor) => {
         current.remove();
     }
 };
+
+function propBinder(target, name) {
+    return val => target[name] = val;
+}
+
+// runtime use:
 
 let objectTypes = {
     'boolean': false,
@@ -145,19 +289,24 @@ let freeGlobal = objectTypes[typeof global] && global;
 if (freeGlobal && (freeGlobal.global === freeGlobal || freeGlobal.window === freeGlobal)) {
     root = freeGlobal;
 }
+//# sourceMappingURL=root.js.map
 
 function isFunction(x) {
     return typeof x === 'function';
 }
+//# sourceMappingURL=isFunction.js.map
 
 const isArray = Array.isArray || ((x) => x && typeof x.length === 'number');
+//# sourceMappingURL=isArray.js.map
 
 function isObject(x) {
     return x != null && typeof x === 'object';
 }
+//# sourceMappingURL=isObject.js.map
 
 // typeof any so that it we don't have to cast when comparing a result to the error object
 var errorObject = { e: {} };
+//# sourceMappingURL=errorObject.js.map
 
 let tryCatchTarget;
 function tryCatcher() {
@@ -173,6 +322,8 @@ function tryCatch(fn) {
     tryCatchTarget = fn;
     return tryCatcher;
 }
+
+//# sourceMappingURL=tryCatch.js.map
 
 /**
  * An error thrown when one or more errors have occurred during the
@@ -190,19 +341,8 @@ class UnsubscriptionError extends Error {
         this.message = err.message;
     }
 }
+//# sourceMappingURL=UnsubscriptionError.js.map
 
-/**
- * Represents a disposable resource, such as the execution of an Observable. A
- * Subscription has one important method, `unsubscribe`, that takes no argument
- * and just disposes the resource held by the subscription.
- *
- * Additionally, subscriptions may be grouped together through the `add()`
- * method, which will attach a child Subscription to the current Subscription.
- * When a Subscription is unsubscribed, all its children (and its grandchildren)
- * will be unsubscribed as well.
- *
- * @class Subscription
- */
 class Subscription {
     /**
      * @param {function(): void} [unsubscribe] A function describing how to
@@ -334,6 +474,7 @@ Subscription.EMPTY = (function (empty) {
     empty.closed = true;
     return empty;
 }(new Subscription()));
+//# sourceMappingURL=Subscription.js.map
 
 const empty = {
     closed: true,
@@ -341,21 +482,13 @@ const empty = {
     error(err) { throw err; },
     complete() { }
 };
+//# sourceMappingURL=Observer.js.map
 
 const Symbol = root.Symbol;
 const $$rxSubscriber = (typeof Symbol === 'function' && typeof Symbol.for === 'function') ?
     Symbol.for('rxSubscriber') : '@@rxSubscriber';
+//# sourceMappingURL=rxSubscriber.js.map
 
-/**
- * Implements the {@link Observer} interface and extends the
- * {@link Subscription} class. While the {@link Observer} is the public API for
- * consuming the values of an {@link Observable}, all Observers get converted to
- * a Subscriber, in order to provide Subscription-like capabilities such as
- * `unsubscribe`. Subscriber is a common type in RxJS, and crucial for
- * implementing operators, but it is rarely used as a public API.
- *
- * @class Subscriber<T>
- */
 class Subscriber extends Subscription {
     /**
      * @param {Observer|function(value: T): void} [destinationOrNext] A partially
@@ -579,6 +712,7 @@ class SafeSubscriber extends Subscriber {
         _parent.unsubscribe();
     }
 }
+//# sourceMappingURL=Subscriber.js.map
 
 function toSubscriber(nextOrObserver, error, complete) {
     if (nextOrObserver) {
@@ -594,6 +728,7 @@ function toSubscriber(nextOrObserver, error, complete) {
     }
     return new Subscriber(nextOrObserver, error, complete);
 }
+//# sourceMappingURL=toSubscriber.js.map
 
 function getSymbolObservable(context) {
     let $$observable;
@@ -613,13 +748,8 @@ function getSymbolObservable(context) {
     return $$observable;
 }
 const $$observable = getSymbolObservable(root);
+//# sourceMappingURL=observable.js.map
 
-/**
- * A representation of any set of values over any amount of time. This the most basic building block
- * of RxJS.
- *
- * @class Observable<T>
- */
 class Observable {
     /**
      * @constructor
@@ -746,6 +876,7 @@ class Observable {
 Observable.create = (subscribe) => {
     return new Observable(subscribe);
 };
+//# sourceMappingURL=Observable.js.map
 
 /**
  * An error thrown when an action is invalid because the object has been
@@ -764,12 +895,8 @@ class ObjectUnsubscribedError extends Error {
         this.message = err.message;
     }
 }
+//# sourceMappingURL=ObjectUnsubscribedError.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @ignore
- * @extends {Ignored}
- */
 class SubjectSubscription extends Subscription {
     constructor(subject, subscriber) {
         super();
@@ -794,10 +921,8 @@ class SubjectSubscription extends Subscription {
         }
     }
 }
+//# sourceMappingURL=SubjectSubscription.js.map
 
-/**
- * @class SubjectSubscriber<T>
- */
 class SubjectSubscriber extends Subscriber {
     constructor(destination) {
         super(destination);
@@ -933,10 +1058,8 @@ class AnonymousSubject extends Subject {
         }
     }
 }
+//# sourceMappingURL=Subject.js.map
 
-/**
- * @class BehaviorSubject<T>
- */
 class BehaviorSubject extends Subject {
     constructor(_value) {
         super();
@@ -967,85 +1090,49 @@ class BehaviorSubject extends Subject {
         super.next(this._value = value);
     }
 }
+//# sourceMappingURL=BehaviorSubject.js.map
 
-const __render0$1 = renderer(makeFragment(`<p>Things are looking up!</p>`));
-const __render1$1 = renderer(makeFragment(`
+const __render0$1 = renderer(makeTemplate(`<p>Things are looking up!</p>`));
+const __render1$1 = renderer(makeTemplate(`
         <p>
             Things are going down :(
             <button onclick="confirm('feel better?')">panic</button>
         </p>
     `));
-const __render2 = renderer(makeFragment(`
+const __render2 = renderer(makeTemplate(`
         <p data-bind>Count is <text-node></text-node></p>
         <div data-bind><!-- block --></div>
         <button onclick="" data-bind>increment</button>
         <button onclick="" data-bind>decrement</button>
     `));
-const __bind0$1 = textBinder(1);
-const __bind1$1 = __blockBinder(0);
-const __bind2$1 = attrBinder('onclick');
 var counter = () => {
-	const count = new BehaviorSubject(0);
-	const change = x => count.next(count.value + x);
-	return counter$1(count, change);
+  const count = new BehaviorSubject(0);
+  const change = x => count.next(count.value + x);
+  return counter$1(count, change);
 };
 const counter$1 = (count, change) => {
-	const positive = () => {
-		const __nodes = __render0$1();
-		return __nodes[__nodes.length];
-	};
-	const negative = () => {
-		const __nodes = __render1$1();
-		return __nodes[__nodes.length];
-	};
-	const __nodes = __render2();
-	const __sub0 = count.subscribe(__bind0$1(__nodes[0]));
-	const __sub1b = __bind1$1(__nodes[1]);
-	const __sub1 = map(count, count => count >= 0 ? positive : negative, __sub1b.observer);
-	__bind2$1(__nodes[2])(() => change(1));
-	__bind2$1(__nodes[3])(() => change(-1));
-	const __fragment = __nodes[__nodes.length];
-	__fragment.unsubscribe = () => {
-		__sub0.unsubscribe();
-		__sub1.unsubscribe();
-		__sub1b.unsubscribe();
-	};
-	return __fragment;
+  const positive = () => {
+    return __render0$1().__fragment;
+  };
+  const negative = () => {
+    return __render1$1().__fragment;
+  };
+  const {__fragment, __nodes} = __render2();
+  const __child0 = __nodes[0].childNodes[1];
+  const __child1 = __nodes[1].childNodes[0];
+  const __sub0 = count.subscribe(textBinder(__child0));
+  const __sub1b = __blockBinder(__child1);
+  const __sub1 = map(count, count => count >= 0 ? positive : negative, __sub1b.observer);
+  attrBinder(__nodes[2], 'onclick')(() => change(1));
+  attrBinder(__nodes[3], 'onclick')(() => change(-1));
+  __fragment.unsubscribe = () => {
+    __sub0.unsubscribe();
+    __sub1.unsubscribe();
+    __sub1b.unsubscribe();
+  };
+  return __fragment;
 };
 
-/**
- * Applies a given `project` function to each value emitted by the source
- * Observable, and emits the resulting values as an Observable.
- *
- * <span class="informal">Like [Array.prototype.map()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map),
- * it passes each source value through a transformation function to get
- * corresponding output values.</span>
- *
- * <img src="./img/map.png" width="100%">
- *
- * Similar to the well known `Array.prototype.map` function, this operator
- * applies a projection to each value and emits that projection in the output
- * Observable.
- *
- * @example <caption>Map every every click to the clientX position of that click</caption>
- * var clicks = Rx.Observable.fromEvent(document, 'click');
- * var positions = clicks.map(ev => ev.clientX);
- * positions.subscribe(x => console.log(x));
- *
- * @see {@link mapTo}
- * @see {@link pluck}
- *
- * @param {function(value: T, index: number): R} project The function to apply
- * to each `value` emitted by the source Observable. The `index` parameter is
- * the number `i` for the i-th emission that has happened since the
- * subscription, starting from the number `0`.
- * @param {any} [thisArg] An optional argument to define what `this` is in the
- * `project` function.
- * @return {Observable<R>} An Observable that emits the values from the source
- * Observable transformed by the given `project` function.
- * @method map
- * @owner Observable
- */
 function map$1(project, thisArg) {
     if (typeof project !== 'function') {
         throw new TypeError('argument is not a function. Are you looking for `mapTo()`?');
@@ -1087,34 +1174,8 @@ class MapSubscriber extends Subscriber {
         this.destination.next(result);
     }
 }
+//# sourceMappingURL=map.js.map
 
-/**
- * Maps each source value (an object) to its specified nested property.
- *
- * <span class="informal">Like {@link map}, but meant only for picking one of
- * the nested properties of every emitted object.</span>
- *
- * <img src="./img/pluck.png" width="100%">
- *
- * Given a list of strings describing a path to an object property, retrieves
- * the value of a specified nested property from all values in the source
- * Observable. If a property can't be resolved, it will return `undefined` for
- * that value.
- *
- * @example <caption>Map every every click to the tagName of the clicked target element</caption>
- * var clicks = Rx.Observable.fromEvent(document, 'click');
- * var tagNames = clicks.pluck('target', 'tagName');
- * tagNames.subscribe(x => console.log(x));
- *
- * @see {@link map}
- *
- * @param {...string} properties The nested properties to pluck from each source
- * value (an object).
- * @return {Observable} Returns a new Observable of property values from the
- * source values.
- * @method pluck
- * @owner Observable
- */
 function pluck(...properties) {
     const length = properties.length;
     if (length === 0) {
@@ -1138,80 +1199,75 @@ function plucker(props, length) {
     };
     return mapper;
 }
+//# sourceMappingURL=pluck.js.map
 
 Observable.prototype.pluck = pluck;
+//# sourceMappingURL=pluck.js.map
 
-const __render0$2 = renderer(makeFragment(`
+const __render0$2 = renderer(makeTemplate(`
     <div data-bind>
         <text-node></text-node>:
         <input value="" onkeyup="" data-bind>
     </div>
 `));
-const __render1$2 = renderer(makeFragment(`
+const __render1$2 = renderer(makeTemplate(`
         <p data-bind><text-node></text-node> <text-node></text-node>!</p>
         <div data-bind>
             <!-- block -->
             <!-- block -->
         </div>
     `));
-const __bind0$2 = textBinder(1);
-const __bind1$2 = attrBinder('value');
-const __bind2$2 = attrBinder('onkeyup');
-const __bind3$1 = textBinder(0);
-const __bind4 = textBinder(2);
-const __bind5 = __blockBinder(1);
-const __bind6 = __blockBinder(3);
 Observable.prototype.child = Observable.prototype.pluck;
 var hello = () => {
-	const options = new BehaviorSubject({
-		salutation: 'Hello',
-		name: 'World'
-	});
-	const change = value => {
-		options.next(Object.assign({}, options.value, value));
-	};
-	return hello$1(options, change);
+  const options = new BehaviorSubject({
+    salutation: 'Hello',
+    name: 'World'
+  });
+  const change = value => {
+    options.next(Object.assign({}, options.value, value));
+  };
+  return hello$1(options, change);
 };
 const TextInput = (prop, val, change) => {
-	const __nodes = __render0$2();
-	__bind0$2(__nodes[0])(prop);
-	__bind1$2(__nodes[1])(val);
-	__bind2$2(__nodes[1])(({target}) => change({
-		[prop]: target.value
-	}));
-	return __nodes[__nodes.length];
+  const {__fragment, __nodes} = __render0$2();
+  const __child0 = __nodes[0].childNodes[1];
+  textBinder(__child0)(prop);
+  attrBinder(__nodes[1], 'value')(val);
+  attrBinder(__nodes[1], 'onkeyup')(({target}) => change({
+    [prop]: target.value
+  }));
+  return __fragment;
 };
 const hello$1 = (__ref0, change) => {
-	const name = __ref0.child('name');
-	const salutation = __ref0.child('salutation');
-	const __nodes = __render1$2();
-	const __sub0 = salutation.subscribe(__bind3$1(__nodes[0]));
-	const __sub1 = name.subscribe(__bind4(__nodes[0]));
-	const __sub2b = __bind5(__nodes[1]);
-	const __sub2 = map(salutation, salutation => TextInput('salutation', salutation, change), __sub2b.observer, true);
-	const __sub3b = __bind6(__nodes[1]);
-	const __sub3 = map(name, name => TextInput('name', name, change), __sub3b.observer, true);
-	const __fragment = __nodes[__nodes.length];
-	__fragment.unsubscribe = () => {
-		__sub0.unsubscribe();
-		__sub1.unsubscribe();
-		__sub2.unsubscribe();
-		__sub2b.unsubscribe();
-		__sub3.unsubscribe();
-		__sub3b.unsubscribe();
-	};
-	return __fragment;
+  const name = __ref0.child('name');
+  const salutation = __ref0.child('salutation');
+  const {__fragment, __nodes} = __render1$2();
+  const __child0 = __nodes[0].childNodes[0];
+  const __child1 = __nodes[0].childNodes[2];
+  const __child2 = __nodes[1].childNodes[1];
+  const __child3 = __nodes[1].childNodes[3];
+  const __sub0 = salutation.subscribe(textBinder(__child0));
+  const __sub1 = name.subscribe(textBinder(__child1));
+  const __sub2b = __blockBinder(__child2);
+  const __sub2 = map(salutation, salutation => TextInput('salutation', salutation, change), __sub2b.observer, true);
+  const __sub3b = __blockBinder(__child3);
+  const __sub3 = map(name, name => TextInput('name', name, change), __sub3b.observer, true);
+  __fragment.unsubscribe = () => {
+    __sub0.unsubscribe();
+    __sub1.unsubscribe();
+    __sub2.unsubscribe();
+    __sub2b.unsubscribe();
+    __sub3.unsubscribe();
+    __sub3b.unsubscribe();
+  };
+  return __fragment;
 };
 
 function isPromise(value) {
     return value && typeof value.subscribe !== 'function' && typeof value.then === 'function';
 }
+//# sourceMappingURL=isPromise.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class PromiseObservable extends Observable {
     constructor(promise, scheduler) {
         super();
@@ -1315,6 +1371,7 @@ function dispatchError(arg) {
         subscriber.error(err);
     }
 }
+//# sourceMappingURL=PromiseObservable.js.map
 
 let $$iterator;
 const Symbol$1 = root.Symbol;
@@ -1346,12 +1403,8 @@ else {
         $$iterator = '@@iterator';
     }
 }
+//# sourceMappingURL=iterator.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class IteratorObservable extends Observable {
     constructor(iterator, scheduler) {
         super();
@@ -1485,12 +1538,8 @@ function sign(value) {
     }
     return valueAsNumber < 0 ? -1 : 1;
 }
+//# sourceMappingURL=IteratorObservable.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class ScalarObservable extends Observable {
     constructor(value, scheduler) {
         super();
@@ -1533,12 +1582,8 @@ class ScalarObservable extends Observable {
         }
     }
 }
+//# sourceMappingURL=ScalarObservable.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class EmptyObservable extends Observable {
     constructor(scheduler) {
         super();
@@ -1598,16 +1643,13 @@ class EmptyObservable extends Observable {
         }
     }
 }
+//# sourceMappingURL=EmptyObservable.js.map
 
 function isScheduler(value) {
     return value && typeof value.schedule === 'function';
 }
+//# sourceMappingURL=isScheduler.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class ArrayObservable extends Observable {
     constructor(array, scheduler) {
         super();
@@ -1707,12 +1749,8 @@ class ArrayObservable extends Observable {
         }
     }
 }
+//# sourceMappingURL=ArrayObservable.js.map
 
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @extends {Ignored}
- * @hide true
- */
 class ArrayLikeObservable extends Observable {
     constructor(arrayLike, scheduler) {
         super();
@@ -1765,21 +1803,8 @@ class ArrayLikeObservable extends Observable {
         }
     }
 }
+//# sourceMappingURL=ArrayLikeObservable.js.map
 
-/**
- * Represents a push-based event or value that an {@link Observable} can emit.
- * This class is particularly useful for operators that manage notifications,
- * like {@link materialize}, {@link dematerialize}, {@link observeOn}, and
- * others. Besides wrapping the actual delivered value, it also annotates it
- * with metadata of, for instance, what type of push message it is (`next`,
- * `error`, or `complete`).
- *
- * @see {@link materialize}
- * @see {@link dematerialize}
- * @see {@link observeOn}
- *
- * @class Notification<T>
- */
 class Notification {
     constructor(kind, value, exception) {
         this.kind = kind;
@@ -1888,17 +1913,7 @@ class Notification {
 }
 Notification.completeNotification = new Notification('C');
 Notification.undefinedValueNotification = new Notification('N', undefined);
-
-/**
- * @see {@link Notification}
- *
- * @param scheduler
- * @param delay
- * @return {Observable<R>|WebSocketSubject<T>|Observable<T>}
- * @method observeOn
- * @owner Observable
- */
-
+//# sourceMappingURL=Notification.js.map
 
 /**
  * We need this JSDoc comment for affecting ESDoc.
@@ -1934,6 +1949,7 @@ class ObserveOnMessage {
         this.destination = destination;
     }
 }
+//# sourceMappingURL=observeOn.js.map
 
 const isArrayLike = ((x) => x && typeof x.length === 'number');
 /**
@@ -2031,77 +2047,91 @@ class FromObservable extends Observable {
         }
     }
 }
+//# sourceMappingURL=FromObservable.js.map
 
 const from = FromObservable.create;
+//# sourceMappingURL=from.js.map
 
 Observable.from = from;
+//# sourceMappingURL=from.js.map
 
-const __render0$3 = renderer(makeFragment(`
+const __render0$3 = renderer(makeTemplate(`
     <div class="card">
         <a href="" target="_blank" data-bind><text-node></text-node></a>
         🌟<strong data-bind><text-node></text-node></strong>
         <p data-bind><text-node></text-node></p>
     </div>
 `));
-const __render1$3 = renderer(makeFragment(`
+const __render1$3 = renderer(makeTemplate(`
     <h3 class="text-center" data-bind>Found <text-node></text-node></h3>
     <div class="list" data-bind>
         <!-- block -->
     </div>      
 `));
-const __bind0$3 = attrBinder('href');
-const __bind1$3 = textBinder(0);
-const __bind2$3 = textBinder(1);
-const __bind3$2 = __blockBinder(1);
 const SEARCH = 'https://api.github.com/search/repositories';
 const double = 4;
 var ghRepo = () => {
-	const req = fetch(`${SEARCH}?q=stars:>5000&sort=stars&per_page=100`).then(r => r.json()).then(r => {
-		let items = r.items;
-		for (let i = 0; i < double; i++) {
-			items = items.concat(items);
-		}
-		return items;
-	});
-	return repos(Observable.from(req));
+  const req = fetch(`${SEARCH}?q=stars:>5000&sort=stars&per_page=100`).then(r => r.json()).then(r => {
+    let items = r.items;
+    for (let i = 0; i < double; i++) {
+      items = items.concat(items);
+    }
+    return items;
+  });
+  return repos(Observable.from(req));
 };
 const repo = ({html_url: url, full_name: name, stargazers_count: stars, description}) => {
-	const __nodes = __render0$3();
-	__bind0$3(__nodes[0])(url);
-	__bind1$3(__nodes[0])(name);
-	__bind1$3(__nodes[1])(stars);
-	__bind1$3(__nodes[2])(description);
-	return __nodes[__nodes.length];
+  const {__fragment, __nodes} = __render0$3();
+  const __child1 = __nodes[0].childNodes[0];
+  const __child2 = __nodes[1].childNodes[0];
+  const __child3 = __nodes[2].childNodes[0];
+  attrBinder(__nodes[0], 'href')(url);
+  textBinder(__child1)(name);
+  textBinder(__child2)(stars);
+  textBinder(__child3)(description);
+  return __fragment;
 };
 const repos = repos => {
-	const __nodes = __render1$3();
-	const __sub0 = map(repos, repos => repos.length, __bind2$3(__nodes[0]), true);
-	const __sub1b = __bind3$2(__nodes[1]);
-	const __sub1 = map(repos, repos => (() => {
-		console.time('render ' + repos.length);
-		const fragments = repos.map(repo);
-		console.timeEnd('render ' + repos.length);
-		return fragments;
-	})(), __sub1b.observer, true);
-	const __fragment = __nodes[__nodes.length];
-	__fragment.unsubscribe = () => {
-		__sub0.unsubscribe();
-		__sub1.unsubscribe();
-		__sub1b.unsubscribe();
-	};
-	return __fragment;
+  const {__fragment, __nodes} = __render1$3();
+  const __child0 = __nodes[0].childNodes[1];
+  const __child1 = __nodes[1].childNodes[1];
+  const __sub0 = map(repos, repos => repos.length, textBinder(__child0), true);
+  const __sub1b = __blockBinder(__child1);
+  const __sub1 = map(repos, repos => (() => {
+    console.time('render ' + repos.length);
+    const fragments = repos.map(repo);
+    console.timeEnd('render ' + repos.length);
+    return fragments;
+  })(), __sub1b.observer, true);
+  __fragment.unsubscribe = () => {
+    __sub0.unsubscribe();
+    __sub1.unsubscribe();
+    __sub1b.unsubscribe();
+  };
+  return __fragment;
 };
 
-const __render0$4 = renderer(makeFragment(`
+const __render0$4 = renderer(makeTemplate(`
+    <h3 class="text-center">Show HN</h3>
+    <h2 data-bind><text-node></text-node> stories</h2>
+    <ul data-bind>
+        <!-- block -->
+    </ul>       
+`));
+const __render1$4 = renderer(makeTemplate(`
+        <!-- block -->
+    `));
+const __render2$1 = renderer(makeTemplate(`
     <p data-bind><text-node></text-node> by <em data-bind><text-node></text-node></em></p>
 `));
-const __render1$4 = renderer(makeFragment(`
+const __render3 = renderer(makeTemplate(`
     <div data-bind>
         <div data-bind><text-node></text-node></div>
         <!-- block -->
     </div>
 `));
-const __render2$1 = renderer(makeFragment(`
+const __render4 = renderer(makeTemplate(`'comments'`));
+const __render5 = renderer(makeTemplate(`
     <li>
         <div class="card" data-bind>
             <a href="" target="_blank" data-bind><text-node></text-node></a>
@@ -2114,107 +2144,459 @@ const __render2$1 = renderer(makeFragment(`
         </div>
     </li>
 `));
-const __render3 = renderer(makeFragment(`
-    <h3 class="text-center">Show HN</h3>
-    <h2 data-bind><text-node></text-node> stories</h2>
-    <ul data-bind>
-        <!-- block -->
-    </ul>       
-`));
-const __bind0$4 = textBinder(0);
-const __bind1$4 = __blockBinder(3);
-const __bind2$4 = __blockBinder(5);
-const __bind3$3 = textBinder(7);
-const __bind4$1 = attrBinder('href');
-const __bind5$1 = __blockBinder(1);
 var config = {
-	databaseURL: 'https://hacker-news.firebaseio.com'
+  databaseURL: 'https://hacker-news.firebaseio.com'
 };
 firebase.initializeApp(config);
 const fb = firebase.database().ref('v0');
 Object.getPrototypeOf(fb).subscribe = function subscribe(listener) {
-	const fn = snapshot => void listener(snapshot.val());
-	this.on('value', fn);
-	return {
-		unsubscribe: () => void this.off('value', fn)
-	};
+  const fn = snapshot => void listener(snapshot.val());
+  this.on('value', fn);
+  return {
+    unsubscribe: () => void this.off('value', fn)
+  };
 };
 var showHN = () => {
-	const type = 'top';
-	return show(fb.child(`${type}stories`));
+  const type = 'top';
+  return Show(fb.child(`${type}stories`));
+};
+const Show = topics => {
+  const {__fragment, __nodes} = __render0$4();
+  const __child0 = __nodes[0].childNodes[0];
+  const __child1 = __nodes[1].childNodes[1];
+  const __sub0 = map(topics, topics => topics.length, textBinder(__child0));
+  const __sub1b = __blockBinder(__child1);
+  const __sub1 = map(topics, topics => (() => {
+    console.log('topics', topics.length);
+    console.time('shn render');
+    const mapped = topics.map(key => story(key));
+    console.timeEnd('shn render');
+    return mapped;
+  })(), __sub1b.observer, true);
+  __fragment.unsubscribe = () => {
+    __sub0.unsubscribe();
+    __sub1.unsubscribe();
+    __sub1b.unsubscribe();
+  };
+  return __fragment;
 };
 const items = fb.child('item');
 const story = key => {
-	const ref = items.child(key);
-	return card(ref);
+  const ref = items.child(key);
+  return Card(ref);
 };
-const comment = key => {
-	const ref = items.child(key);
-	return note(ref);
+const Byline = ({type, by}) => {
+  const {__fragment, __nodes} = __render2$1();
+  const __child0 = __nodes[0].childNodes[0];
+  const __child1 = __nodes[1].childNodes[0];
+  textBinder(__child0)(type);
+  textBinder(__child1)(by);
+  return __fragment;
 };
-const byline = ({type, by}) => {
-	const __nodes = __render0$4();
-	__bind0$4(__nodes[0])(type);
-	__bind0$4(__nodes[1])(by);
-	return __nodes[__nodes.length];
-};
-const note = reply => {
-	const __nodes = __render1$4();
-	const __sub0b = __bind1$4(__nodes[0]);
-	__sub0b.observer(byline(reply));
-	const __sub1 = map(reply, reply => reply ? reply.text : null, __bind0$4(__nodes[1]), true);
-	const __fragment = __nodes[__nodes.length];
-	__fragment.unsubscribe = () => {
-		__sub0b.unsubscribe();
-		__sub1.unsubscribe();
-	};
-	return __fragment;
-};
-const card = item => {
-	const __nodes = __render2$1();
-	const __sub0b = __bind2$4(__nodes[0]);
-	__sub0b.observer(byline(item));
-	const __sub1 = map(item, item => item.kids ? item.kids.length : 0, __bind3$3(__nodes[0]), true);
-	const __sub2 = map(item, item => item.url, __bind4$1(__nodes[1]), true);
-	const __sub3 = map(item, item => item.title, __bind0$4(__nodes[1]), true);
-	const __sub4 = map(item, item => item.score, __bind0$4(__nodes[2]), true);
-	const __sub5b = __bind5$1(__nodes[3]);
-	const __sub5 = map(item, item => item.kids ? item.kids.map(kid => comment(kid)) : [], __sub5b.observer, true);
-	const __fragment = __nodes[__nodes.length];
-	__fragment.unsubscribe = () => {
-		__sub0b.unsubscribe();
-		__sub1.unsubscribe();
-		__sub2.unsubscribe();
-		__sub3.unsubscribe();
-		__sub4.unsubscribe();
-		__sub5.unsubscribe();
-		__sub5b.unsubscribe();
-	};
-	return __fragment;
-};
-const show = topics => {
-	const __nodes = __render3();
-	const __sub0 = map(topics, topics => topics.length, __bind0$4(__nodes[0]));
-	const __sub1b = __bind5$1(__nodes[1]);
-	const __sub1 = map(topics, topics => (() => {
-		console.time('shn render');
-		const mapped = topics.map(key => story(key));
-		console.timeEnd('shn render');
-		return mapped;
-	})(), __sub1b.observer, true);
-	const __fragment = __nodes[__nodes.length];
-	__fragment.unsubscribe = () => {
-		__sub0.unsubscribe();
-		__sub1.unsubscribe();
-		__sub1b.unsubscribe();
-	};
-	return __fragment;
+const Card = item => {
+  const {__fragment, __nodes} = __render5();
+  const __child0 = __nodes[0].childNodes[5];
+  const __child1 = __nodes[0].childNodes[7];
+  const __child3 = __nodes[1].childNodes[0];
+  const __child4 = __nodes[2].childNodes[0];
+  const __child5 = __nodes[3].childNodes[1];
+  const __sub0b = __blockBinder(__child0);
+  const __sub0 = map(item, item => Byline(item), __sub0b.observer, true);
+  const __sub1 = map(item, item => item.kids ? item.kids.length : 0, textBinder(__child1), true);
+  const __sub2 = map(item, item => item.url, attrBinder(__nodes[1], 'href'), true);
+  const __sub3 = map(item, item => item.title, textBinder(__child3), true);
+  const __sub4 = map(item, item => item.score, textBinder(__child4), true);
+  const __sub5b = __blockBinder(__child5);
+  __sub5b.observer(() => {
+    return __render4().__fragment;
+  });
+  __fragment.unsubscribe = () => {
+    __sub0.unsubscribe();
+    __sub0b.unsubscribe();
+    __sub1.unsubscribe();
+    __sub2.unsubscribe();
+    __sub3.unsubscribe();
+    __sub4.unsubscribe();
+    __sub5b.unsubscribe();
+  };
+  return __fragment;
 };
 
-const __render0 = renderer(makeFragment(`
+class OuterSubscriber extends Subscriber {
+    notifyNext(outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.destination.next(innerValue);
+    }
+    notifyError(error, innerSub) {
+        this.destination.error(error);
+    }
+    notifyComplete(innerSub) {
+        this.destination.complete();
+    }
+}
+//# sourceMappingURL=OuterSubscriber.js.map
+
+class InnerSubscriber extends Subscriber {
+    constructor(parent, outerValue, outerIndex) {
+        super();
+        this.parent = parent;
+        this.outerValue = outerValue;
+        this.outerIndex = outerIndex;
+        this.index = 0;
+    }
+    _next(value) {
+        this.parent.notifyNext(this.outerValue, value, this.outerIndex, this.index++, this);
+    }
+    _error(error) {
+        this.parent.notifyError(error, this);
+        this.unsubscribe();
+    }
+    _complete() {
+        this.parent.notifyComplete(this);
+        this.unsubscribe();
+    }
+}
+//# sourceMappingURL=InnerSubscriber.js.map
+
+function subscribeToResult(outerSubscriber, result, outerValue, outerIndex) {
+    let destination = new InnerSubscriber(outerSubscriber, outerValue, outerIndex);
+    if (destination.closed) {
+        return null;
+    }
+    if (result instanceof Observable) {
+        if (result._isScalar) {
+            destination.next(result.value);
+            destination.complete();
+            return null;
+        }
+        else {
+            return result.subscribe(destination);
+        }
+    }
+    if (isArray(result)) {
+        for (let i = 0, len = result.length; i < len && !destination.closed; i++) {
+            destination.next(result[i]);
+        }
+        if (!destination.closed) {
+            destination.complete();
+        }
+    }
+    else if (isPromise(result)) {
+        result.then((value) => {
+            if (!destination.closed) {
+                destination.next(value);
+                destination.complete();
+            }
+        }, (err) => destination.error(err))
+            .then(null, (err) => {
+            // Escaping the Promise trap: globally throw unhandled errors
+            root.setTimeout(() => { throw err; });
+        });
+        return destination;
+    }
+    else if (typeof result[$$iterator] === 'function') {
+        const iterator = result[$$iterator]();
+        do {
+            let item = iterator.next();
+            if (item.done) {
+                destination.complete();
+                break;
+            }
+            destination.next(item.value);
+            if (destination.closed) {
+                break;
+            }
+        } while (true);
+    }
+    else if (typeof result[$$observable] === 'function') {
+        const obs = result[$$observable]();
+        if (typeof obs.subscribe !== 'function') {
+            destination.error(new Error('invalid observable'));
+        }
+        else {
+            return obs.subscribe(new InnerSubscriber(outerSubscriber, outerValue, outerIndex));
+        }
+    }
+    else {
+        destination.error(new TypeError('unknown type returned'));
+    }
+    return null;
+}
+//# sourceMappingURL=subscribeToResult.js.map
+
+class MergeAllOperator {
+    constructor(concurrent) {
+        this.concurrent = concurrent;
+    }
+    call(observer, source) {
+        return source._subscribe(new MergeAllSubscriber(observer, this.concurrent));
+    }
+}
+/**
+ * We need this JSDoc comment for affecting ESDoc.
+ * @ignore
+ * @extends {Ignored}
+ */
+class MergeAllSubscriber extends OuterSubscriber {
+    constructor(destination, concurrent) {
+        super(destination);
+        this.concurrent = concurrent;
+        this.hasCompleted = false;
+        this.buffer = [];
+        this.active = 0;
+    }
+    _next(observable) {
+        if (this.active < this.concurrent) {
+            this.active++;
+            this.add(subscribeToResult(this, observable));
+        }
+        else {
+            this.buffer.push(observable);
+        }
+    }
+    _complete() {
+        this.hasCompleted = true;
+        if (this.active === 0 && this.buffer.length === 0) {
+            this.destination.complete();
+        }
+    }
+    notifyComplete(innerSub) {
+        const buffer = this.buffer;
+        this.remove(innerSub);
+        this.active--;
+        if (buffer.length > 0) {
+            this._next(buffer.shift());
+        }
+        else if (this.active === 0 && this.hasCompleted) {
+            this.destination.complete();
+        }
+    }
+}
+//# sourceMappingURL=mergeAll.js.map
+
+/* tslint:enable:max-line-length */
+/**
+ * Creates an output Observable which sequentially emits all values from every
+ * given input Observable after the current Observable.
+ *
+ * <span class="informal">Concatenates multiple Observables together by
+ * sequentially emitting their values, one Observable after the other.</span>
+ *
+ * <img src="./img/concat.png" width="100%">
+ *
+ * Joins multiple Observables together by subscribing to them one at a time and
+ * merging their results into the output Observable. Will wait for each
+ * Observable to complete before moving on to the next.
+ *
+ * @example <caption>Concatenate a timer counting from 0 to 3 with a synchronous sequence from 1 to 10</caption>
+ * var timer = Rx.Observable.interval(1000).take(4);
+ * var sequence = Rx.Observable.range(1, 10);
+ * var result = Rx.Observable.concat(timer, sequence);
+ * result.subscribe(x => console.log(x));
+ *
+ * @example <caption>Concatenate 3 Observables</caption>
+ * var timer1 = Rx.Observable.interval(1000).take(10);
+ * var timer2 = Rx.Observable.interval(2000).take(6);
+ * var timer3 = Rx.Observable.interval(500).take(10);
+ * var result = Rx.Observable.concat(timer1, timer2, timer3);
+ * result.subscribe(x => console.log(x));
+ *
+ * @see {@link concatAll}
+ * @see {@link concatMap}
+ * @see {@link concatMapTo}
+ *
+ * @param {Observable} input1 An input Observable to concatenate with others.
+ * @param {Observable} input2 An input Observable to concatenate with others.
+ * More than one input Observables may be given as argument.
+ * @param {Scheduler} [scheduler=null] An optional Scheduler to schedule each
+ * Observable subscription on.
+ * @return {Observable} All values of each passed Observable merged into a
+ * single Observable, in order, in serial fashion.
+ * @static true
+ * @name concat
+ * @owner Observable
+ */
+function concatStatic(...observables) {
+    let scheduler = null;
+    let args = observables;
+    if (isScheduler(args[observables.length - 1])) {
+        scheduler = args.pop();
+    }
+    return new ArrayObservable(observables, scheduler).lift(new MergeAllOperator(1));
+}
+//# sourceMappingURL=concat.js.map
+
+function startWith(...array) {
+    let scheduler = array[array.length - 1];
+    if (isScheduler(scheduler)) {
+        array.pop();
+    }
+    else {
+        scheduler = null;
+    }
+    const len = array.length;
+    if (len === 1) {
+        return concatStatic(new ScalarObservable(array[0], scheduler), this);
+    }
+    else if (len > 1) {
+        return concatStatic(new ArrayObservable(array, scheduler), this);
+    }
+    else {
+        return concatStatic(new EmptyObservable(scheduler), this);
+    }
+}
+//# sourceMappingURL=startWith.js.map
+
+Observable.prototype.startWith = startWith;
+//# sourceMappingURL=startWith.js.map
+
+const __render0$5 = renderer(makeTemplate(`
+        <header>
+            <h3 class="text-center" data-bind>Page <text-node></text-node> of <text-node></text-node></h3>
+        </header>
+        <section style="position:relative;" data-bind>
+            <!-- block -->
+            <!-- block -->
+        </section>
+        <footer data-bind>
+            <!-- block -->
+        </footer>
+    `));
+const __render1$5 = renderer(makeTemplate(`
+        <button disabled="" onclick="" data-bind><text-node></text-node></button>
+    `));
+const __render2$2 = renderer(makeTemplate(`
+        <span data-bind>
+            <!-- block -->
+            <!-- block -->
+        </span>
+    `));
+const __render3$1 = renderer(makeTemplate(`
+    <div class="fill" style="height: 100%; text-align: center;">
+        <img style="height: 100%;" src="https://www.createwebsite.net/wp-content/uploads/2015/09/GD.gif">
+    </div>
+`));
+const __render4$1 = renderer(makeTemplate(`<li data-bind><text-node></text-node></li>`));
+const __render5$1 = renderer(makeTemplate(`
+    <ul data-bind>
+        <!-- component start --><!-- component end -->
+    </ul>
+`));
+const API = 'https://swapi.co/api/people/';
+const PER_PAGE = 10;
+var starWars = () => {
+  const page = new Subject();
+  const loading = new Subject();
+  const cache = new Map();
+  const getPage = url => {
+    const search = url.split('?')[1];
+    let num = 1;
+    if (search) {
+      const params = new URLSearchParams(search);
+      if (params.has('page')) num = params.get('page');
+    }
+    if (cache.has(num)) {
+      page.next(cache.get(num));
+    } else {
+      loading.next(true);
+      fetch(url).then(r => r.json()).then(res => {
+        res.pageNumber = num;
+        cache.set(num, res);
+        loading.next(false);
+        page.next(res);
+      }).catch(console.log);
+    }
+  };
+  getPage(API);
+  const paging = PagingButtons(page, getPage);
+  return Viewer(page.startWith({
+    results: Array(PER_PAGE).fill()
+  }), loading.startWith(true), paging);
+};
+const Viewer = (__ref0, loading, Paging) => {
+  const count = __ref0.child('count');
+  const pageNumber = __ref0.child('pageNumber');
+  const results = __ref0.child('results');
+  const {__fragment, __nodes} = __render0$5();
+  const __child0 = __nodes[0].childNodes[1];
+  const __child1 = __nodes[0].childNodes[3];
+  const __child2 = __nodes[1].childNodes[1];
+  const __child3 = __nodes[1].childNodes[3];
+  const __child4 = __nodes[2].childNodes[1];
+  const __sub0 = pageNumber.subscribe(textBinder(__child0));
+  const __sub1 = map(count, count => Math.ceil(count / PER_PAGE), textBinder(__child1));
+  const __sub2b = __blockBinder(__child2);
+  const __sub2 = map(loading, loading => loading && Spinner, __sub2b.observer);
+  const __sub3b = __blockBinder(__child3);
+  __sub3b.observer(people(results));
+  const __sub4b = __blockBinder(__child4);
+  __sub4b.observer(Paging);
+  __fragment.unsubscribe = () => {
+    __sub0.unsubscribe();
+    __sub1.unsubscribe();
+    __sub2.unsubscribe();
+    __sub2b.unsubscribe();
+    __sub3b.unsubscribe();
+    __sub4b.unsubscribe();
+  };
+  return __fragment;
+};
+const PagingButtons = (__ref1, getPage) => {
+  const previous = __ref1.child('previous');
+  const next = __ref1.child('next');
+  const pagingButton = label => url => {
+    const {__fragment, __nodes} = __render1$5();
+    const __child2 = __nodes[0].childNodes[0];
+    const __sub0 = map(url, url => !url, attrBinder(__nodes[0], 'disabled'));
+    const __sub1 = map(url, url => () => getPage(url), attrBinder(__nodes[0], 'onclick'));
+    textBinder(__child2)(label);
+    __fragment.unsubscribe = () => {
+      __sub0.unsubscribe();
+      __sub1.unsubscribe();
+    };
+    return __fragment;
+  };
+  const PreviousButton = pagingButton('Previous');
+  const NextButton = pagingButton('Next');
+  const {__fragment, __nodes} = __render2$2();
+  const __child0 = __nodes[0].childNodes[1];
+  const __child1 = __nodes[0].childNodes[3];
+  const __sub0b = __blockBinder(__child0);
+  __sub0b.observer(PreviousButton(previous));
+  const __sub1b = __blockBinder(__child1);
+  __sub1b.observer(NextButton(next));
+  __fragment.unsubscribe = () => {
+    __sub0b.unsubscribe();
+    __sub1b.unsubscribe();
+  };
+  return __fragment;
+};
+const Spinner = () => {
+  return __render3$1().__fragment;
+};
+const people = people => {
+  const {__fragment, __nodes} = __render5$1();
+  const __child0 = __nodes[0].childNodes[2];
+  const __sub0b = makeOverlay(people);
+  propBinder(__sub0b, 'map')(person => {
+    const {__fragment, __nodes} = __render4$1();
+    const __child0 = __nodes[0].childNodes[0];
+    const __sub0 = map(person, person => person.name, textBinder(__child0));
+    __fragment.unsubscribe = () => {
+      __sub0.unsubscribe();
+    };
+    return __fragment;
+  });
+  __sub0b.onanchor(__child0);
+  __fragment.unsubscribe = () => {
+    __sub0b.unsubscribe();
+  };
+  return __fragment;
+};
+
+const __render0 = renderer(makeTemplate(`
                     <li onclick="" data-bind><text-node></text-node></li>
                 `));
-const __render1 = renderer(makeFragment(`
+const __render1 = renderer(makeTemplate(`
     <header>
         <nav>
             <ul data-bind>
@@ -2226,40 +2608,39 @@ const __render1 = renderer(makeFragment(`
         <div data-bind><!-- block --></div>
     </main>
 `));
-const __bind0 = attrBinder('onclick');
-const __bind1 = textBinder(0);
-const __bind2 = __blockBinder(1);
-const __bind3 = __blockBinder(0);
 const apps = {
-	'Hello World': hello,
-	'Counter': counter,
-	'GitHub Repos': ghRepo,
-	'Show HN': showHN
+  'Hello World': hello,
+  'Counter': counter,
+  'GitHub Repos': ghRepo,
+  'Show HN': showHN,
+  'Star Wars': starWars
 };
 var app = () => {
-	const current = apps[window.location.hash.slice(1)];
-	const app = new BehaviorSubject(current || hello);
-	const change = value => void app.next(value);
-	return App(apps, app, change);
+  const current = apps[window.location.hash.slice(1)];
+  const app = new BehaviorSubject(current || hello);
+  const change = value => void app.next(value);
+  return App(apps, app, change);
 };
 const App = (apps, app, change) => {
-	const __nodes = __render1();
-	const __sub0b = __bind2(__nodes[0]);
-	__sub0b.observer(Object.keys(apps).map(name => {
-		const __nodes = __render0();
-		__bind0(__nodes[0])(() => change(apps[name]));
-		__bind1(__nodes[0])(name);
-		return __nodes[__nodes.length];
-	}));
-	const __sub1b = __bind3(__nodes[1]);
-	const __sub1 = app.subscribe(__sub1b.observer);
-	const __fragment = __nodes[__nodes.length];
-	__fragment.unsubscribe = () => {
-		__sub0b.unsubscribe();
-		__sub1.unsubscribe();
-		__sub1b.unsubscribe();
-	};
-	return __fragment;
+  const {__fragment, __nodes} = __render1();
+  const __child0 = __nodes[0].childNodes[1];
+  const __child1 = __nodes[1].childNodes[0];
+  const __sub0b = __blockBinder(__child0);
+  __sub0b.observer(Object.keys(apps).map(name => {
+    const {__fragment, __nodes} = __render0();
+    const __child1 = __nodes[0].childNodes[0];
+    attrBinder(__nodes[0], 'onclick')(() => change(apps[name]));
+    textBinder(__child1)(name);
+    return __fragment;
+  }));
+  const __sub1b = __blockBinder(__child1);
+  const __sub1 = app.subscribe(__sub1b.observer);
+  __fragment.unsubscribe = () => {
+    __sub0b.unsubscribe();
+    __sub1.unsubscribe();
+    __sub1b.unsubscribe();
+  };
+  return __fragment;
 };
 
 document.getElementById('app').appendChild(app());

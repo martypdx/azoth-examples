@@ -4,12 +4,14 @@ import counter from './apps/counter';
 import hello from './apps/hello-world';
 import ghRepo from './apps/github-repo';
 import showHN from './apps/show-hn';
+import starWars from './apps/starwars';
 
 const apps = {
     'Hello World': hello,
     'Counter': counter,
     'GitHub Repos': ghRepo,
-    'Show HN': showHN
+    'Show HN': showHN,
+    'Star Wars': starWars
 };
 
 export default () => {

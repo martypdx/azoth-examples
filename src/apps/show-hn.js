@@ -1,7 +1,9 @@
 /* global firebase */
 // Why U no rollup :(
 // import * as firebase from 'firebase/app';
-import { _, $ } from 'azoth';
+import { _, $, rawHtml } from 'azoth';
+import { Observable } from 'rxjs-es/Observable';
+import 'rxjs-es/add/observable/from';
 
 var config = {
     databaseURL: 'https://hacker-news.firebaseio.com'
@@ -18,57 +20,62 @@ Object.getPrototypeOf(fb).subscribe = function subscribe(listener) {
 
 export default () => {
     const type = 'top';
-    return show(fb.child(`${type}stories`));
+    return Show(fb.child(`${type}stories`));
 };
 
-const items = fb.child('item');
-
-const story = key => {
-    const ref = items.child(key);
-    return card(ref);
-};
-
-const comment = key => {
-    const ref = items.child(key);
-    return note(ref);
-};
-
-const byline = ({ type, by }) => _`
-    <p>$${type} by <em>$${by}</em></p>
-`;
-
-const note = (reply=$) => _`
-    <div>
-        <div>$${reply ? reply.text : null}</div>
-        ${byline(reply)}#
-    </div>
-`;
-
-const card = (item=$) => _`
-    <li>
-        <div class="card">
-            <a href=$${item.url} target="_blank">$${item.title}</a>
-            🌟<strong>$${item.score}</strong>
-            ${byline(item)}#
-            $${ item.kids ? item.kids.length : 0 } comments
-            <ul>
-            $${
-                item.kids ? item.kids.map(kid => comment(kid)) : []
-            }#
-            </ul>
-        </div>
-    </li>
-`;
-
-const show = (topics=$) => _`
+const Show = (topics=$) => _`
     <h3 class="text-center">Show HN</h3>
     <h2>*${topics.length} stories</h2>
     <ul>
         $${(() =>{
+            console.log('topics', topics.length);
             console.time('shn render');
             const mapped = topics.map(key => story(key));
             console.timeEnd('shn render');
             return mapped;
         })()}#
     </ul>       
+`;
+
+const items = fb.child('item');
+
+const story = key => {
+    const ref = items.child(key);
+    return Card(ref);
+};
+
+const comments = keys => {
+    if(!keys) return null;
+    const replies = Observable.from(
+        Promise.resolve(keys.map(key => items.child(key)))
+    );
+    const notes = (replies=$) => _`
+        $${replies.map(Reply)}#
+    `; 
+    return notes(replies);
+};
+
+const Byline = ({ type, by }) => _`
+    <p>${type} by <em>${by}</em></p>
+`;
+
+const Reply = (reply=$) => _`
+    <div>
+        <div>$${reply ? reply.text : null}</div>
+        $${Byline(reply)}#
+    </div>
+`;
+
+const Card = (item=$) => _`
+    <li>
+        <div class="card">
+            <a href=$${item.url} target="_blank">$${item.title}</a>
+            🌟<strong>$${item.score}</strong>
+            $${Byline(item)}#
+            $${ item.kids ? item.kids.length : 0 } comments
+            <ul>
+            $${/*comments(item.kids)*/_`'comments'`}#
+            </ul>
+        </div>
+    </li>
 `;
