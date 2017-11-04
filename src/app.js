@@ -1,5 +1,9 @@
 import { _, $ } from 'azoth';
-import { BehaviorSubject } from 'rxjs-es/BehaviorSubject';
+import { Observable } from 'rxjs-es/Observable';
+import 'rxjs-es/add/observable/fromEvent';
+import 'rxjs-es/add/operator/map';
+import 'rxjs-es/add/operator/startWith';
+
 import counter from './apps/counter';
 import hello from './apps/hello-world';
 import ghRepo from './apps/github-repo';
@@ -15,24 +19,46 @@ const apps = {
 };
 
 export default () => {
-    const current = apps[window.location.hash.slice(1)];
-    const app = new BehaviorSubject(current || hello);
-    const change = value => void app.next(value);
-    
-    return App(apps, app, change);
+    const app = Observable.fromEvent(window, 'hashchange')
+        .startWith(null)
+        .map(() => window.location.hash.slice(1))
+        .map(name => ({ 
+            name: name || 'Hello World', 
+            app: apps[name] || hello 
+        }));
+
+    return App(Object.keys(apps), app);
 };
 
-const App = (apps, app=$, change) => _`
+const App = (names, { name, app }=$) => _`
     <header>
-        <nav>
-            <ul>
-                ${Object.keys(apps).map(name => _`
-                    <li onclick=${() => change(apps[name])}>${name}</li>
-                `)}#
-            </ul>
+        <nav class="navbar" role="navigation" aria-label="main navigation">
+            <div class="navbar-brand">
+                <div class="navbar-item">
+                    <h6 class="title is-6">Azoth Example Apps</h6>
+                </div>
+            </div>
+            <div class="navbar-menu is-active">
+                <div class="navbar-start">
+                </div>
+                <div class="navbar-end">
+                    ${names.map(name => _`
+                        <a href=${`#${name}`} class="navbar-item">${name}</a>
+                    `)}#
+                </div>                
+            </div>
         </nav>
     </header>
     <main>
-        <div>*${app}#</div>
+        <section class="hero is-primary">
+            <div class="hero-body">
+            <div class="container">
+                <h1 class="title">*${name}</h1>
+            </div>
+            </div>
+        </section>
+        <section class="container">
+            *${app}#
+        </section>
     </main>
 `;

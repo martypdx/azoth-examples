@@ -1,48 +1,42 @@
 import { _, $, Overlay } from 'azoth';
 import { Subject } from 'rxjs-es/Subject';
+import { Observable } from 'rxjs-es/Observable';
+import 'rxjs-es/add/observable/from';
+import 'rxjs-es/add/operator/do';
+import 'rxjs-es/add/operator/mergeMap';
+import 'rxjs-es/add/operator/share';
 import 'rxjs-es/add/operator/startWith';
 
 
 const API = 'https://swapi.co/api/people/';
 const PER_PAGE = 10;
 
+const getPageNumber = url => {
+    const search = url.split('?')[1];
+    return (search && new URLSearchParams(search).get('page')) || '1';
+};
+
+const fetchPage = url => fetch(url)
+    .then(r => r.json())
+    .then(r => (r.pageNumber = getPageNumber(url), r));
+
 export default () => {
-    const page = new Subject();
+    
+    const url = new Subject();
     const loading = new Subject();
     const cache = new Map();
 
-    const getPage = url => {
-        const search = url.split('?')[1];
-        let num = 1;
-        if(search) {
-            const params = new URLSearchParams(search);
-            if(params.has('page')) num = params.get('page');
-        }
+    const page = url.startWith(`${API}?page=1`)
+        .do(() => loading.next(true))
+        .do(url => cache.has(url) || cache.set(url, fetchPage(url)))
+        .mergeMap(url => cache.get(url))
+        .do(() => loading.next(false))
+        .share();
 
-        if(cache.has(num)) {
-            page.next(cache.get(num));
-        }
-        else {
-            loading.next(true);
-            fetch(url)
-                .then(r => r.json())
-                .then(res => {
-                    res.pageNumber = num;
-                    cache.set(num, res);
-                    loading.next(false);
-                    page.next(res);
-                })
-                // TODO: handle this in good way
-                .catch(console.log);    
-        }
-    };
-
-    getPage(API);
-
-    const paging = PagingButtons(page, getPage);
+    const paging = PagingButtons(page, url);
 
     return Viewer(
-        page.startWith({ results: Array(PER_PAGE).fill() }), 
+        page, 
         loading.startWith(true), 
         paging
     );
@@ -51,7 +45,7 @@ export default () => {
 const Viewer = ({ count, pageNumber, results }=$, loading=$, Paging) => {
     return _`
         <header>
-            <h3 class="text-center">Page *${pageNumber} of *${Math.ceil(count/PER_PAGE)}</h3>
+            <h3 class="text-center">*${count} Records - Page *${pageNumber} of *${Math.ceil(count/PER_PAGE)}</h3>
         </header>
         <section style="position:relative;">
             *${loading && Spinner}#
@@ -63,17 +57,15 @@ const Viewer = ({ count, pageNumber, results }=$, loading=$, Paging) => {
     `;
 };
 
-const PagingButtons = ({ previous, next }=$, getPage) => {
-    const pagingButton = label => (url=$) => _`
-        <button disabled=*${!url} onclick=*${() => getPage(url)}>${label}</button>
+const PagingButtons = ({ previous, next }=$, setUrl) => {
+    const Button = (label, url=$) => _`
+        <button disabled=*${!url} onclick=*${() => setUrl.next(url)}>${label}</button>
     `;
-    const PreviousButton = pagingButton('Previous');
-    const NextButton = pagingButton('Next');
-    
+
     return _`
         <span>
-            ${PreviousButton(previous)}#
-            ${NextButton(next)}#
+            ${Button('Previous', previous)}#
+            ${Button('Next', next)}#
         </span>
     `;
 };
@@ -86,7 +78,26 @@ const Spinner = _`
 `;
 
 const people = (people=$) => _`
-    <ul>
-        <#:${Overlay(people)} map=${(person=$) => _`<li>*${person.name}</li>`}/>
-    </ul>
+    <table class="table is-striped is-hoverable is-fullwidth">
+        <thead>
+            <tr>
+                <th>name</th>
+                <th>birth year</th>
+                <th>eye color</th>
+                <th>hair color</th>
+                <th>height</th>
+                <th>mass</th>
+            </tr>
+        </thead>
+        <#:${Overlay(people)} map=${(person=$) => _`
+            <tr>
+                <td>*${person.name}</td>
+                <td>*${person.birth_year}</td>
+                <td>*${person.eye_color}</td>
+                <td>*${person.hair_color}</td>
+                <td>*${person.height}</td>
+                <td>*${person.mass}</td>
+            </tr>`
+        }/>
+    </table>
 `;

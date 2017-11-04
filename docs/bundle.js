@@ -878,6 +878,648 @@ Observable.create = (subscribe) => {
 };
 //# sourceMappingURL=Observable.js.map
 
+function isNodeStyleEventEmmitter(sourceObj) {
+    return !!sourceObj && typeof sourceObj.addListener === 'function' && typeof sourceObj.removeListener === 'function';
+}
+function isJQueryStyleEventEmitter(sourceObj) {
+    return !!sourceObj && typeof sourceObj.on === 'function' && typeof sourceObj.off === 'function';
+}
+function isNodeList(sourceObj) {
+    return !!sourceObj && sourceObj.toString() === '[object NodeList]';
+}
+function isHTMLCollection(sourceObj) {
+    return !!sourceObj && sourceObj.toString() === '[object HTMLCollection]';
+}
+function isEventTarget(sourceObj) {
+    return !!sourceObj && typeof sourceObj.addEventListener === 'function' && typeof sourceObj.removeEventListener === 'function';
+}
+/**
+ * We need this JSDoc comment for affecting ESDoc.
+ * @extends {Ignored}
+ * @hide true
+ */
+class FromEventObservable extends Observable {
+    constructor(sourceObj, eventName, selector, options) {
+        super();
+        this.sourceObj = sourceObj;
+        this.eventName = eventName;
+        this.selector = selector;
+        this.options = options;
+    }
+    /* tslint:enable:max-line-length */
+    /**
+     * Creates an Observable that emits events of a specific type coming from the
+     * given event target.
+     *
+     * <span class="informal">Creates an Observable from DOM events, or Node
+     * EventEmitter events or others.</span>
+     *
+     * <img src="./img/fromEvent.png" width="100%">
+     *
+     * Creates an Observable by attaching an event listener to an "event target",
+     * which may be an object with `addEventListener` and `removeEventListener`,
+     * a Node.js EventEmitter, a jQuery style EventEmitter, a NodeList from the
+     * DOM, or an HTMLCollection from the DOM. The event handler is attached when
+     * the output Observable is subscribed, and removed when the Subscription is
+     * unsubscribed.
+     *
+     * @example <caption>Emits clicks happening on the DOM document</caption>
+     * var clicks = Rx.Observable.fromEvent(document, 'click');
+     * clicks.subscribe(x => console.log(x));
+     *
+     * @see {@link from}
+     * @see {@link fromEventPattern}
+     *
+     * @param {EventTargetLike} target The DOMElement, event target, Node.js
+     * EventEmitter, NodeList or HTMLCollection to attach the event handler to.
+     * @param {string} eventName The event name of interest, being emitted by the
+     * `target`.
+     * @parm {EventListenerOptions} [options] Options to pass through to addEventListener
+     * @param {SelectorMethodSignature<T>} [selector] An optional function to
+     * post-process results. It takes the arguments from the event handler and
+     * should return a single value.
+     * @return {Observable<T>}
+     * @static true
+     * @name fromEvent
+     * @owner Observable
+     */
+    static create(target, eventName, options, selector) {
+        if (isFunction(options)) {
+            selector = options;
+            options = undefined;
+        }
+        return new FromEventObservable(target, eventName, selector, options);
+    }
+    static setupSubscription(sourceObj, eventName, handler, subscriber, options) {
+        let unsubscribe;
+        if (isNodeList(sourceObj) || isHTMLCollection(sourceObj)) {
+            for (let i = 0, len = sourceObj.length; i < len; i++) {
+                FromEventObservable.setupSubscription(sourceObj[i], eventName, handler, subscriber, options);
+            }
+        }
+        else if (isEventTarget(sourceObj)) {
+            const source = sourceObj;
+            sourceObj.addEventListener(eventName, handler, options);
+            unsubscribe = () => source.removeEventListener(eventName, handler);
+        }
+        else if (isJQueryStyleEventEmitter(sourceObj)) {
+            const source = sourceObj;
+            sourceObj.on(eventName, handler);
+            unsubscribe = () => source.off(eventName, handler);
+        }
+        else if (isNodeStyleEventEmmitter(sourceObj)) {
+            const source = sourceObj;
+            sourceObj.addListener(eventName, handler);
+            unsubscribe = () => source.removeListener(eventName, handler);
+        }
+        subscriber.add(new Subscription(unsubscribe));
+    }
+    _subscribe(subscriber) {
+        const sourceObj = this.sourceObj;
+        const eventName = this.eventName;
+        const options = this.options;
+        const selector = this.selector;
+        let handler = selector ? (...args) => {
+            let result = tryCatch(selector)(...args);
+            if (result === errorObject) {
+                subscriber.error(errorObject.e);
+            }
+            else {
+                subscriber.next(result);
+            }
+        } : (e) => subscriber.next(e);
+        FromEventObservable.setupSubscription(sourceObj, eventName, handler, subscriber, options);
+    }
+}
+//# sourceMappingURL=FromEventObservable.js.map
+
+const fromEvent = FromEventObservable.create;
+//# sourceMappingURL=fromEvent.js.map
+
+Observable.fromEvent = fromEvent;
+//# sourceMappingURL=fromEvent.js.map
+
+function map$1(project, thisArg) {
+    if (typeof project !== 'function') {
+        throw new TypeError('argument is not a function. Are you looking for `mapTo()`?');
+    }
+    return this.lift(new MapOperator(project, thisArg));
+}
+class MapOperator {
+    constructor(project, thisArg) {
+        this.project = project;
+        this.thisArg = thisArg;
+    }
+    call(subscriber, source) {
+        return source._subscribe(new MapSubscriber(subscriber, this.project, this.thisArg));
+    }
+}
+/**
+ * We need this JSDoc comment for affecting ESDoc.
+ * @ignore
+ * @extends {Ignored}
+ */
+class MapSubscriber extends Subscriber {
+    constructor(destination, project, thisArg) {
+        super(destination);
+        this.project = project;
+        this.count = 0;
+        this.thisArg = thisArg || this;
+    }
+    // NOTE: This looks unoptimized, but it's actually purposefully NOT
+    // using try/catch optimizations.
+    _next(value) {
+        let result;
+        try {
+            result = this.project.call(this.thisArg, value, this.count++);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        this.destination.next(result);
+    }
+}
+//# sourceMappingURL=map.js.map
+
+Observable.prototype.map = map$1;
+//# sourceMappingURL=map.js.map
+
+class ScalarObservable extends Observable {
+    constructor(value, scheduler) {
+        super();
+        this.value = value;
+        this.scheduler = scheduler;
+        this._isScalar = true;
+        if (scheduler) {
+            this._isScalar = false;
+        }
+    }
+    static create(value, scheduler) {
+        return new ScalarObservable(value, scheduler);
+    }
+    static dispatch(state) {
+        const { done, value, subscriber } = state;
+        if (done) {
+            subscriber.complete();
+            return;
+        }
+        subscriber.next(value);
+        if (subscriber.closed) {
+            return;
+        }
+        state.done = true;
+        this.schedule(state);
+    }
+    _subscribe(subscriber) {
+        const value = this.value;
+        const scheduler = this.scheduler;
+        if (scheduler) {
+            return scheduler.schedule(ScalarObservable.dispatch, 0, {
+                done: false, value, subscriber
+            });
+        }
+        else {
+            subscriber.next(value);
+            if (!subscriber.closed) {
+                subscriber.complete();
+            }
+        }
+    }
+}
+//# sourceMappingURL=ScalarObservable.js.map
+
+class EmptyObservable extends Observable {
+    constructor(scheduler) {
+        super();
+        this.scheduler = scheduler;
+    }
+    /**
+     * Creates an Observable that emits no items to the Observer and immediately
+     * emits a complete notification.
+     *
+     * <span class="informal">Just emits 'complete', and nothing else.
+     * </span>
+     *
+     * <img src="./img/empty.png" width="100%">
+     *
+     * This static operator is useful for creating a simple Observable that only
+     * emits the complete notification. It can be used for composing with other
+     * Observables, such as in a {@link mergeMap}.
+     *
+     * @example <caption>Emit the number 7, then complete.</caption>
+     * var result = Rx.Observable.empty().startWith(7);
+     * result.subscribe(x => console.log(x));
+     *
+     * @example <caption>Map and flatten only odd numbers to the sequence 'a', 'b', 'c'</caption>
+     * var interval = Rx.Observable.interval(1000);
+     * var result = interval.mergeMap(x =>
+     *   x % 2 === 1 ? Rx.Observable.of('a', 'b', 'c') : Rx.Observable.empty()
+     * );
+     * result.subscribe(x => console.log(x));
+     *
+     * @see {@link create}
+     * @see {@link never}
+     * @see {@link of}
+     * @see {@link throw}
+     *
+     * @param {Scheduler} [scheduler] A {@link Scheduler} to use for scheduling
+     * the emission of the complete notification.
+     * @return {Observable} An "empty" Observable: emits only the complete
+     * notification.
+     * @static true
+     * @name empty
+     * @owner Observable
+     */
+    static create(scheduler) {
+        return new EmptyObservable(scheduler);
+    }
+    static dispatch(arg) {
+        const { subscriber } = arg;
+        subscriber.complete();
+    }
+    _subscribe(subscriber) {
+        const scheduler = this.scheduler;
+        if (scheduler) {
+            return scheduler.schedule(EmptyObservable.dispatch, 0, { subscriber });
+        }
+        else {
+            subscriber.complete();
+        }
+    }
+}
+//# sourceMappingURL=EmptyObservable.js.map
+
+function isScheduler(value) {
+    return value && typeof value.schedule === 'function';
+}
+//# sourceMappingURL=isScheduler.js.map
+
+class ArrayObservable extends Observable {
+    constructor(array, scheduler) {
+        super();
+        this.array = array;
+        this.scheduler = scheduler;
+        if (!scheduler && array.length === 1) {
+            this._isScalar = true;
+            this.value = array[0];
+        }
+    }
+    static create(array, scheduler) {
+        return new ArrayObservable(array, scheduler);
+    }
+    /**
+     * Creates an Observable that emits some values you specify as arguments,
+     * immediately one after the other, and then emits a complete notification.
+     *
+     * <span class="informal">Emits the arguments you provide, then completes.
+     * </span>
+     *
+     * <img src="./img/of.png" width="100%">
+     *
+     * This static operator is useful for creating a simple Observable that only
+     * emits the arguments given, and the complete notification thereafter. It can
+     * be used for composing with other Observables, such as with {@link concat}.
+     * By default, it uses a `null` Scheduler, which means the `next`
+     * notifications are sent synchronously, although with a different Scheduler
+     * it is possible to determine when those notifications will be delivered.
+     *
+     * @example <caption>Emit 10, 20, 30, then 'a', 'b', 'c', then start ticking every second.</caption>
+     * var numbers = Rx.Observable.of(10, 20, 30);
+     * var letters = Rx.Observable.of('a', 'b', 'c');
+     * var interval = Rx.Observable.interval(1000);
+     * var result = numbers.concat(letters).concat(interval);
+     * result.subscribe(x => console.log(x));
+     *
+     * @see {@link create}
+     * @see {@link empty}
+     * @see {@link never}
+     * @see {@link throw}
+     *
+     * @param {...T} values Arguments that represent `next` values to be emitted.
+     * @param {Scheduler} [scheduler] A {@link Scheduler} to use for scheduling
+     * the emissions of the `next` notifications.
+     * @return {Observable<T>} An Observable that emits each given input value.
+     * @static true
+     * @name of
+     * @owner Observable
+     */
+    static of(...array) {
+        let scheduler = array[array.length - 1];
+        if (isScheduler(scheduler)) {
+            array.pop();
+        }
+        else {
+            scheduler = null;
+        }
+        const len = array.length;
+        if (len > 1) {
+            return new ArrayObservable(array, scheduler);
+        }
+        else if (len === 1) {
+            return new ScalarObservable(array[0], scheduler);
+        }
+        else {
+            return new EmptyObservable(scheduler);
+        }
+    }
+    static dispatch(state) {
+        const { array, index, count, subscriber } = state;
+        if (index >= count) {
+            subscriber.complete();
+            return;
+        }
+        subscriber.next(array[index]);
+        if (subscriber.closed) {
+            return;
+        }
+        state.index = index + 1;
+        this.schedule(state);
+    }
+    _subscribe(subscriber) {
+        let index = 0;
+        const array = this.array;
+        const count = array.length;
+        const scheduler = this.scheduler;
+        if (scheduler) {
+            return scheduler.schedule(ArrayObservable.dispatch, 0, {
+                array, index, count, subscriber
+            });
+        }
+        else {
+            for (let i = 0; i < count && !subscriber.closed; i++) {
+                subscriber.next(array[i]);
+            }
+            subscriber.complete();
+        }
+    }
+}
+//# sourceMappingURL=ArrayObservable.js.map
+
+class OuterSubscriber extends Subscriber {
+    notifyNext(outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.destination.next(innerValue);
+    }
+    notifyError(error, innerSub) {
+        this.destination.error(error);
+    }
+    notifyComplete(innerSub) {
+        this.destination.complete();
+    }
+}
+//# sourceMappingURL=OuterSubscriber.js.map
+
+function isPromise(value) {
+    return value && typeof value.subscribe !== 'function' && typeof value.then === 'function';
+}
+//# sourceMappingURL=isPromise.js.map
+
+let $$iterator;
+const Symbol$1 = root.Symbol;
+if (typeof Symbol$1 === 'function') {
+    if (Symbol$1.iterator) {
+        $$iterator = Symbol$1.iterator;
+    }
+    else if (typeof Symbol$1.for === 'function') {
+        $$iterator = Symbol$1.for('iterator');
+    }
+}
+else {
+    if (root.Set && typeof new root.Set()['@@iterator'] === 'function') {
+        // Bug for mozilla version
+        $$iterator = '@@iterator';
+    }
+    else if (root.Map) {
+        // es6-shim specific logic
+        let keys = Object.getOwnPropertyNames(root.Map.prototype);
+        for (let i = 0; i < keys.length; ++i) {
+            let key = keys[i];
+            if (key !== 'entries' && key !== 'size' && root.Map.prototype[key] === root.Map.prototype['entries']) {
+                $$iterator = key;
+                break;
+            }
+        }
+    }
+    else {
+        $$iterator = '@@iterator';
+    }
+}
+//# sourceMappingURL=iterator.js.map
+
+class InnerSubscriber extends Subscriber {
+    constructor(parent, outerValue, outerIndex) {
+        super();
+        this.parent = parent;
+        this.outerValue = outerValue;
+        this.outerIndex = outerIndex;
+        this.index = 0;
+    }
+    _next(value) {
+        this.parent.notifyNext(this.outerValue, value, this.outerIndex, this.index++, this);
+    }
+    _error(error) {
+        this.parent.notifyError(error, this);
+        this.unsubscribe();
+    }
+    _complete() {
+        this.parent.notifyComplete(this);
+        this.unsubscribe();
+    }
+}
+//# sourceMappingURL=InnerSubscriber.js.map
+
+function subscribeToResult(outerSubscriber, result, outerValue, outerIndex) {
+    let destination = new InnerSubscriber(outerSubscriber, outerValue, outerIndex);
+    if (destination.closed) {
+        return null;
+    }
+    if (result instanceof Observable) {
+        if (result._isScalar) {
+            destination.next(result.value);
+            destination.complete();
+            return null;
+        }
+        else {
+            return result.subscribe(destination);
+        }
+    }
+    if (isArray(result)) {
+        for (let i = 0, len = result.length; i < len && !destination.closed; i++) {
+            destination.next(result[i]);
+        }
+        if (!destination.closed) {
+            destination.complete();
+        }
+    }
+    else if (isPromise(result)) {
+        result.then((value) => {
+            if (!destination.closed) {
+                destination.next(value);
+                destination.complete();
+            }
+        }, (err) => destination.error(err))
+            .then(null, (err) => {
+            // Escaping the Promise trap: globally throw unhandled errors
+            root.setTimeout(() => { throw err; });
+        });
+        return destination;
+    }
+    else if (typeof result[$$iterator] === 'function') {
+        const iterator = result[$$iterator]();
+        do {
+            let item = iterator.next();
+            if (item.done) {
+                destination.complete();
+                break;
+            }
+            destination.next(item.value);
+            if (destination.closed) {
+                break;
+            }
+        } while (true);
+    }
+    else if (typeof result[$$observable] === 'function') {
+        const obs = result[$$observable]();
+        if (typeof obs.subscribe !== 'function') {
+            destination.error(new Error('invalid observable'));
+        }
+        else {
+            return obs.subscribe(new InnerSubscriber(outerSubscriber, outerValue, outerIndex));
+        }
+    }
+    else {
+        destination.error(new TypeError('unknown type returned'));
+    }
+    return null;
+}
+//# sourceMappingURL=subscribeToResult.js.map
+
+class MergeAllOperator {
+    constructor(concurrent) {
+        this.concurrent = concurrent;
+    }
+    call(observer, source) {
+        return source._subscribe(new MergeAllSubscriber(observer, this.concurrent));
+    }
+}
+/**
+ * We need this JSDoc comment for affecting ESDoc.
+ * @ignore
+ * @extends {Ignored}
+ */
+class MergeAllSubscriber extends OuterSubscriber {
+    constructor(destination, concurrent) {
+        super(destination);
+        this.concurrent = concurrent;
+        this.hasCompleted = false;
+        this.buffer = [];
+        this.active = 0;
+    }
+    _next(observable) {
+        if (this.active < this.concurrent) {
+            this.active++;
+            this.add(subscribeToResult(this, observable));
+        }
+        else {
+            this.buffer.push(observable);
+        }
+    }
+    _complete() {
+        this.hasCompleted = true;
+        if (this.active === 0 && this.buffer.length === 0) {
+            this.destination.complete();
+        }
+    }
+    notifyComplete(innerSub) {
+        const buffer = this.buffer;
+        this.remove(innerSub);
+        this.active--;
+        if (buffer.length > 0) {
+            this._next(buffer.shift());
+        }
+        else if (this.active === 0 && this.hasCompleted) {
+            this.destination.complete();
+        }
+    }
+}
+//# sourceMappingURL=mergeAll.js.map
+
+/* tslint:enable:max-line-length */
+/**
+ * Creates an output Observable which sequentially emits all values from every
+ * given input Observable after the current Observable.
+ *
+ * <span class="informal">Concatenates multiple Observables together by
+ * sequentially emitting their values, one Observable after the other.</span>
+ *
+ * <img src="./img/concat.png" width="100%">
+ *
+ * Joins multiple Observables together by subscribing to them one at a time and
+ * merging their results into the output Observable. Will wait for each
+ * Observable to complete before moving on to the next.
+ *
+ * @example <caption>Concatenate a timer counting from 0 to 3 with a synchronous sequence from 1 to 10</caption>
+ * var timer = Rx.Observable.interval(1000).take(4);
+ * var sequence = Rx.Observable.range(1, 10);
+ * var result = Rx.Observable.concat(timer, sequence);
+ * result.subscribe(x => console.log(x));
+ *
+ * @example <caption>Concatenate 3 Observables</caption>
+ * var timer1 = Rx.Observable.interval(1000).take(10);
+ * var timer2 = Rx.Observable.interval(2000).take(6);
+ * var timer3 = Rx.Observable.interval(500).take(10);
+ * var result = Rx.Observable.concat(timer1, timer2, timer3);
+ * result.subscribe(x => console.log(x));
+ *
+ * @see {@link concatAll}
+ * @see {@link concatMap}
+ * @see {@link concatMapTo}
+ *
+ * @param {Observable} input1 An input Observable to concatenate with others.
+ * @param {Observable} input2 An input Observable to concatenate with others.
+ * More than one input Observables may be given as argument.
+ * @param {Scheduler} [scheduler=null] An optional Scheduler to schedule each
+ * Observable subscription on.
+ * @return {Observable} All values of each passed Observable merged into a
+ * single Observable, in order, in serial fashion.
+ * @static true
+ * @name concat
+ * @owner Observable
+ */
+function concatStatic(...observables) {
+    let scheduler = null;
+    let args = observables;
+    if (isScheduler(args[observables.length - 1])) {
+        scheduler = args.pop();
+    }
+    return new ArrayObservable(observables, scheduler).lift(new MergeAllOperator(1));
+}
+//# sourceMappingURL=concat.js.map
+
+function startWith(...array) {
+    let scheduler = array[array.length - 1];
+    if (isScheduler(scheduler)) {
+        array.pop();
+    }
+    else {
+        scheduler = null;
+    }
+    const len = array.length;
+    if (len === 1) {
+        return concatStatic(new ScalarObservable(array[0], scheduler), this);
+    }
+    else if (len > 1) {
+        return concatStatic(new ArrayObservable(array, scheduler), this);
+    }
+    else {
+        return concatStatic(new EmptyObservable(scheduler), this);
+    }
+}
+//# sourceMappingURL=startWith.js.map
+
+Observable.prototype.startWith = startWith;
+//# sourceMappingURL=startWith.js.map
+
 /**
  * An error thrown when an action is invalid because the object has been
  * unsubscribed.
@@ -1133,49 +1775,6 @@ const counter$1 = (count, change) => {
   return __fragment;
 };
 
-function map$1(project, thisArg) {
-    if (typeof project !== 'function') {
-        throw new TypeError('argument is not a function. Are you looking for `mapTo()`?');
-    }
-    return this.lift(new MapOperator(project, thisArg));
-}
-class MapOperator {
-    constructor(project, thisArg) {
-        this.project = project;
-        this.thisArg = thisArg;
-    }
-    call(subscriber, source) {
-        return source._subscribe(new MapSubscriber(subscriber, this.project, this.thisArg));
-    }
-}
-/**
- * We need this JSDoc comment for affecting ESDoc.
- * @ignore
- * @extends {Ignored}
- */
-class MapSubscriber extends Subscriber {
-    constructor(destination, project, thisArg) {
-        super(destination);
-        this.project = project;
-        this.count = 0;
-        this.thisArg = thisArg || this;
-    }
-    // NOTE: This looks unoptimized, but it's actually purposefully NOT
-    // using try/catch optimizations.
-    _next(value) {
-        let result;
-        try {
-            result = this.project.call(this.thisArg, value, this.count++);
-        }
-        catch (err) {
-            this.destination.error(err);
-            return;
-        }
-        this.destination.next(result);
-    }
-}
-//# sourceMappingURL=map.js.map
-
 function pluck(...properties) {
     const length = properties.length;
     if (length === 0) {
@@ -1205,17 +1804,22 @@ Observable.prototype.pluck = pluck;
 //# sourceMappingURL=pluck.js.map
 
 const __render0$2 = renderer(makeTemplate(`
-    <div data-bind>
-        <text-node></text-node>:
-        <input value="" onkeyup="" data-bind>
+    <div class="field">
+        <label class="label is-capitalized" data-bind><text-node></text-node>:</label>
+        <div class="control">
+            <input class="input" value="" onkeyup="" data-bind>
+        </div>
     </div>
 `));
 const __render1$2 = renderer(makeTemplate(`
-        <p data-bind><text-node></text-node> <text-node></text-node>!</p>
-        <div data-bind>
-            <!-- block -->
-            <!-- block -->
-        </div>
+        <section class="section">
+                <p class="is-size-4" data-bind><text-node></text-node> <text-node></text-node>!</p>
+                <hr>
+                <div class="container" data-bind>
+                    <!-- block -->
+                    <!-- block -->
+                </div>
+        </section>
     `));
 Observable.prototype.child = Observable.prototype.pluck;
 var hello = () => {
@@ -1230,7 +1834,7 @@ var hello = () => {
 };
 const TextInput = (prop, val, change) => {
   const {__fragment, __nodes} = __render0$2();
-  const __child0 = __nodes[0].childNodes[1];
+  const __child0 = __nodes[0].childNodes[0];
   textBinder(__child0)(prop);
   attrBinder(__nodes[1], 'value')(val);
   attrBinder(__nodes[1], 'onkeyup')(({target}) => change({
@@ -1262,11 +1866,6 @@ const hello$1 = (__ref0, change) => {
   };
   return __fragment;
 };
-
-function isPromise(value) {
-    return value && typeof value.subscribe !== 'function' && typeof value.then === 'function';
-}
-//# sourceMappingURL=isPromise.js.map
 
 class PromiseObservable extends Observable {
     constructor(promise, scheduler) {
@@ -1372,38 +1971,6 @@ function dispatchError(arg) {
     }
 }
 //# sourceMappingURL=PromiseObservable.js.map
-
-let $$iterator;
-const Symbol$1 = root.Symbol;
-if (typeof Symbol$1 === 'function') {
-    if (Symbol$1.iterator) {
-        $$iterator = Symbol$1.iterator;
-    }
-    else if (typeof Symbol$1.for === 'function') {
-        $$iterator = Symbol$1.for('iterator');
-    }
-}
-else {
-    if (root.Set && typeof new root.Set()['@@iterator'] === 'function') {
-        // Bug for mozilla version
-        $$iterator = '@@iterator';
-    }
-    else if (root.Map) {
-        // es6-shim specific logic
-        let keys = Object.getOwnPropertyNames(root.Map.prototype);
-        for (let i = 0; i < keys.length; ++i) {
-            let key = keys[i];
-            if (key !== 'entries' && key !== 'size' && root.Map.prototype[key] === root.Map.prototype['entries']) {
-                $$iterator = key;
-                break;
-            }
-        }
-    }
-    else {
-        $$iterator = '@@iterator';
-    }
-}
-//# sourceMappingURL=iterator.js.map
 
 class IteratorObservable extends Observable {
     constructor(iterator, scheduler) {
@@ -1539,217 +2106,6 @@ function sign(value) {
     return valueAsNumber < 0 ? -1 : 1;
 }
 //# sourceMappingURL=IteratorObservable.js.map
-
-class ScalarObservable extends Observable {
-    constructor(value, scheduler) {
-        super();
-        this.value = value;
-        this.scheduler = scheduler;
-        this._isScalar = true;
-        if (scheduler) {
-            this._isScalar = false;
-        }
-    }
-    static create(value, scheduler) {
-        return new ScalarObservable(value, scheduler);
-    }
-    static dispatch(state) {
-        const { done, value, subscriber } = state;
-        if (done) {
-            subscriber.complete();
-            return;
-        }
-        subscriber.next(value);
-        if (subscriber.closed) {
-            return;
-        }
-        state.done = true;
-        this.schedule(state);
-    }
-    _subscribe(subscriber) {
-        const value = this.value;
-        const scheduler = this.scheduler;
-        if (scheduler) {
-            return scheduler.schedule(ScalarObservable.dispatch, 0, {
-                done: false, value, subscriber
-            });
-        }
-        else {
-            subscriber.next(value);
-            if (!subscriber.closed) {
-                subscriber.complete();
-            }
-        }
-    }
-}
-//# sourceMappingURL=ScalarObservable.js.map
-
-class EmptyObservable extends Observable {
-    constructor(scheduler) {
-        super();
-        this.scheduler = scheduler;
-    }
-    /**
-     * Creates an Observable that emits no items to the Observer and immediately
-     * emits a complete notification.
-     *
-     * <span class="informal">Just emits 'complete', and nothing else.
-     * </span>
-     *
-     * <img src="./img/empty.png" width="100%">
-     *
-     * This static operator is useful for creating a simple Observable that only
-     * emits the complete notification. It can be used for composing with other
-     * Observables, such as in a {@link mergeMap}.
-     *
-     * @example <caption>Emit the number 7, then complete.</caption>
-     * var result = Rx.Observable.empty().startWith(7);
-     * result.subscribe(x => console.log(x));
-     *
-     * @example <caption>Map and flatten only odd numbers to the sequence 'a', 'b', 'c'</caption>
-     * var interval = Rx.Observable.interval(1000);
-     * var result = interval.mergeMap(x =>
-     *   x % 2 === 1 ? Rx.Observable.of('a', 'b', 'c') : Rx.Observable.empty()
-     * );
-     * result.subscribe(x => console.log(x));
-     *
-     * @see {@link create}
-     * @see {@link never}
-     * @see {@link of}
-     * @see {@link throw}
-     *
-     * @param {Scheduler} [scheduler] A {@link Scheduler} to use for scheduling
-     * the emission of the complete notification.
-     * @return {Observable} An "empty" Observable: emits only the complete
-     * notification.
-     * @static true
-     * @name empty
-     * @owner Observable
-     */
-    static create(scheduler) {
-        return new EmptyObservable(scheduler);
-    }
-    static dispatch(arg) {
-        const { subscriber } = arg;
-        subscriber.complete();
-    }
-    _subscribe(subscriber) {
-        const scheduler = this.scheduler;
-        if (scheduler) {
-            return scheduler.schedule(EmptyObservable.dispatch, 0, { subscriber });
-        }
-        else {
-            subscriber.complete();
-        }
-    }
-}
-//# sourceMappingURL=EmptyObservable.js.map
-
-function isScheduler(value) {
-    return value && typeof value.schedule === 'function';
-}
-//# sourceMappingURL=isScheduler.js.map
-
-class ArrayObservable extends Observable {
-    constructor(array, scheduler) {
-        super();
-        this.array = array;
-        this.scheduler = scheduler;
-        if (!scheduler && array.length === 1) {
-            this._isScalar = true;
-            this.value = array[0];
-        }
-    }
-    static create(array, scheduler) {
-        return new ArrayObservable(array, scheduler);
-    }
-    /**
-     * Creates an Observable that emits some values you specify as arguments,
-     * immediately one after the other, and then emits a complete notification.
-     *
-     * <span class="informal">Emits the arguments you provide, then completes.
-     * </span>
-     *
-     * <img src="./img/of.png" width="100%">
-     *
-     * This static operator is useful for creating a simple Observable that only
-     * emits the arguments given, and the complete notification thereafter. It can
-     * be used for composing with other Observables, such as with {@link concat}.
-     * By default, it uses a `null` Scheduler, which means the `next`
-     * notifications are sent synchronously, although with a different Scheduler
-     * it is possible to determine when those notifications will be delivered.
-     *
-     * @example <caption>Emit 10, 20, 30, then 'a', 'b', 'c', then start ticking every second.</caption>
-     * var numbers = Rx.Observable.of(10, 20, 30);
-     * var letters = Rx.Observable.of('a', 'b', 'c');
-     * var interval = Rx.Observable.interval(1000);
-     * var result = numbers.concat(letters).concat(interval);
-     * result.subscribe(x => console.log(x));
-     *
-     * @see {@link create}
-     * @see {@link empty}
-     * @see {@link never}
-     * @see {@link throw}
-     *
-     * @param {...T} values Arguments that represent `next` values to be emitted.
-     * @param {Scheduler} [scheduler] A {@link Scheduler} to use for scheduling
-     * the emissions of the `next` notifications.
-     * @return {Observable<T>} An Observable that emits each given input value.
-     * @static true
-     * @name of
-     * @owner Observable
-     */
-    static of(...array) {
-        let scheduler = array[array.length - 1];
-        if (isScheduler(scheduler)) {
-            array.pop();
-        }
-        else {
-            scheduler = null;
-        }
-        const len = array.length;
-        if (len > 1) {
-            return new ArrayObservable(array, scheduler);
-        }
-        else if (len === 1) {
-            return new ScalarObservable(array[0], scheduler);
-        }
-        else {
-            return new EmptyObservable(scheduler);
-        }
-    }
-    static dispatch(state) {
-        const { array, index, count, subscriber } = state;
-        if (index >= count) {
-            subscriber.complete();
-            return;
-        }
-        subscriber.next(array[index]);
-        if (subscriber.closed) {
-            return;
-        }
-        state.index = index + 1;
-        this.schedule(state);
-    }
-    _subscribe(subscriber) {
-        let index = 0;
-        const array = this.array;
-        const count = array.length;
-        const scheduler = this.scheduler;
-        if (scheduler) {
-            return scheduler.schedule(ArrayObservable.dispatch, 0, {
-                array, index, count, subscriber
-            });
-        }
-        else {
-            for (let i = 0; i < count && !subscriber.closed; i++) {
-                subscriber.next(array[i]);
-            }
-            subscriber.complete();
-        }
-    }
-}
-//# sourceMappingURL=ArrayObservable.js.map
 
 class ArrayLikeObservable extends Observable {
     constructor(arrayLike, scheduler) {
@@ -2222,113 +2578,17 @@ const Card = item => {
   return __fragment;
 };
 
-class OuterSubscriber extends Subscriber {
-    notifyNext(outerValue, innerValue, outerIndex, innerIndex, innerSub) {
-        this.destination.next(innerValue);
-    }
-    notifyError(error, innerSub) {
-        this.destination.error(error);
-    }
-    notifyComplete(innerSub) {
-        this.destination.complete();
-    }
+function _do(nextOrObserver, error, complete) {
+    return this.lift(new DoOperator(nextOrObserver, error, complete));
 }
-//# sourceMappingURL=OuterSubscriber.js.map
-
-class InnerSubscriber extends Subscriber {
-    constructor(parent, outerValue, outerIndex) {
-        super();
-        this.parent = parent;
-        this.outerValue = outerValue;
-        this.outerIndex = outerIndex;
-        this.index = 0;
+class DoOperator {
+    constructor(nextOrObserver, error, complete) {
+        this.nextOrObserver = nextOrObserver;
+        this.error = error;
+        this.complete = complete;
     }
-    _next(value) {
-        this.parent.notifyNext(this.outerValue, value, this.outerIndex, this.index++, this);
-    }
-    _error(error) {
-        this.parent.notifyError(error, this);
-        this.unsubscribe();
-    }
-    _complete() {
-        this.parent.notifyComplete(this);
-        this.unsubscribe();
-    }
-}
-//# sourceMappingURL=InnerSubscriber.js.map
-
-function subscribeToResult(outerSubscriber, result, outerValue, outerIndex) {
-    let destination = new InnerSubscriber(outerSubscriber, outerValue, outerIndex);
-    if (destination.closed) {
-        return null;
-    }
-    if (result instanceof Observable) {
-        if (result._isScalar) {
-            destination.next(result.value);
-            destination.complete();
-            return null;
-        }
-        else {
-            return result.subscribe(destination);
-        }
-    }
-    if (isArray(result)) {
-        for (let i = 0, len = result.length; i < len && !destination.closed; i++) {
-            destination.next(result[i]);
-        }
-        if (!destination.closed) {
-            destination.complete();
-        }
-    }
-    else if (isPromise(result)) {
-        result.then((value) => {
-            if (!destination.closed) {
-                destination.next(value);
-                destination.complete();
-            }
-        }, (err) => destination.error(err))
-            .then(null, (err) => {
-            // Escaping the Promise trap: globally throw unhandled errors
-            root.setTimeout(() => { throw err; });
-        });
-        return destination;
-    }
-    else if (typeof result[$$iterator] === 'function') {
-        const iterator = result[$$iterator]();
-        do {
-            let item = iterator.next();
-            if (item.done) {
-                destination.complete();
-                break;
-            }
-            destination.next(item.value);
-            if (destination.closed) {
-                break;
-            }
-        } while (true);
-    }
-    else if (typeof result[$$observable] === 'function') {
-        const obs = result[$$observable]();
-        if (typeof obs.subscribe !== 'function') {
-            destination.error(new Error('invalid observable'));
-        }
-        else {
-            return obs.subscribe(new InnerSubscriber(outerSubscriber, outerValue, outerIndex));
-        }
-    }
-    else {
-        destination.error(new TypeError('unknown type returned'));
-    }
-    return null;
-}
-//# sourceMappingURL=subscribeToResult.js.map
-
-class MergeAllOperator {
-    constructor(concurrent) {
-        this.concurrent = concurrent;
-    }
-    call(observer, source) {
-        return source._subscribe(new MergeAllSubscriber(observer, this.concurrent));
+    call(subscriber, source) {
+        return source._subscribe(new DoSubscriber(subscriber, this.nextOrObserver, this.error, this.complete));
     }
 }
 /**
@@ -2336,28 +2596,132 @@ class MergeAllOperator {
  * @ignore
  * @extends {Ignored}
  */
-class MergeAllSubscriber extends OuterSubscriber {
-    constructor(destination, concurrent) {
+class DoSubscriber extends Subscriber {
+    constructor(destination, nextOrObserver, error, complete) {
         super(destination);
+        const safeSubscriber = new Subscriber(nextOrObserver, error, complete);
+        safeSubscriber.syncErrorThrowable = true;
+        this.add(safeSubscriber);
+        this.safeSubscriber = safeSubscriber;
+    }
+    _next(value) {
+        const { safeSubscriber } = this;
+        safeSubscriber.next(value);
+        if (safeSubscriber.syncErrorThrown) {
+            this.destination.error(safeSubscriber.syncErrorValue);
+        }
+        else {
+            this.destination.next(value);
+        }
+    }
+    _error(err) {
+        const { safeSubscriber } = this;
+        safeSubscriber.error(err);
+        if (safeSubscriber.syncErrorThrown) {
+            this.destination.error(safeSubscriber.syncErrorValue);
+        }
+        else {
+            this.destination.error(err);
+        }
+    }
+    _complete() {
+        const { safeSubscriber } = this;
+        safeSubscriber.complete();
+        if (safeSubscriber.syncErrorThrown) {
+            this.destination.error(safeSubscriber.syncErrorValue);
+        }
+        else {
+            this.destination.complete();
+        }
+    }
+}
+//# sourceMappingURL=do.js.map
+
+Observable.prototype.do = _do;
+Observable.prototype._do = _do;
+//# sourceMappingURL=do.js.map
+
+function mergeMap(project, resultSelector, concurrent = Number.POSITIVE_INFINITY) {
+    if (typeof resultSelector === 'number') {
+        concurrent = resultSelector;
+        resultSelector = null;
+    }
+    return this.lift(new MergeMapOperator(project, resultSelector, concurrent));
+}
+class MergeMapOperator {
+    constructor(project, resultSelector, concurrent = Number.POSITIVE_INFINITY) {
+        this.project = project;
+        this.resultSelector = resultSelector;
+        this.concurrent = concurrent;
+    }
+    call(observer, source) {
+        return source._subscribe(new MergeMapSubscriber(observer, this.project, this.resultSelector, this.concurrent));
+    }
+}
+/**
+ * We need this JSDoc comment for affecting ESDoc.
+ * @ignore
+ * @extends {Ignored}
+ */
+class MergeMapSubscriber extends OuterSubscriber {
+    constructor(destination, project, resultSelector, concurrent = Number.POSITIVE_INFINITY) {
+        super(destination);
+        this.project = project;
+        this.resultSelector = resultSelector;
         this.concurrent = concurrent;
         this.hasCompleted = false;
         this.buffer = [];
         this.active = 0;
+        this.index = 0;
     }
-    _next(observable) {
+    _next(value) {
         if (this.active < this.concurrent) {
-            this.active++;
-            this.add(subscribeToResult(this, observable));
+            this._tryNext(value);
         }
         else {
-            this.buffer.push(observable);
+            this.buffer.push(value);
         }
+    }
+    _tryNext(value) {
+        let result;
+        const index = this.index++;
+        try {
+            result = this.project(value, index);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        this.active++;
+        this._innerSub(result, value, index);
+    }
+    _innerSub(ish, value, index) {
+        this.add(subscribeToResult(this, ish, value, index));
     }
     _complete() {
         this.hasCompleted = true;
         if (this.active === 0 && this.buffer.length === 0) {
             this.destination.complete();
         }
+    }
+    notifyNext(outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        if (this.resultSelector) {
+            this._notifyResultSelector(outerValue, innerValue, outerIndex, innerIndex);
+        }
+        else {
+            this.destination.next(innerValue);
+        }
+    }
+    _notifyResultSelector(outerValue, innerValue, outerIndex, innerIndex) {
+        let result;
+        try {
+            result = this.resultSelector(outerValue, innerValue, outerIndex, innerIndex);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        this.destination.next(result);
     }
     notifyComplete(innerSub) {
         const buffer = this.buffer;
@@ -2371,87 +2735,206 @@ class MergeAllSubscriber extends OuterSubscriber {
         }
     }
 }
-//# sourceMappingURL=mergeAll.js.map
+//# sourceMappingURL=mergeMap.js.map
 
-/* tslint:enable:max-line-length */
+Observable.prototype.mergeMap = mergeMap;
+Observable.prototype.flatMap = mergeMap;
+//# sourceMappingURL=mergeMap.js.map
+
+class ConnectableObservable extends Observable {
+    constructor(source, subjectFactory) {
+        super();
+        this.source = source;
+        this.subjectFactory = subjectFactory;
+        this._refCount = 0;
+    }
+    _subscribe(subscriber) {
+        return this.getSubject().subscribe(subscriber);
+    }
+    getSubject() {
+        const subject = this._subject;
+        if (!subject || subject.isStopped) {
+            this._subject = this.subjectFactory();
+        }
+        return this._subject;
+    }
+    connect() {
+        let connection = this._connection;
+        if (!connection) {
+            connection = this._connection = new Subscription();
+            connection.add(this.source
+                .subscribe(new ConnectableSubscriber(this.getSubject(), this)));
+            if (connection.closed) {
+                this._connection = null;
+                connection = Subscription.EMPTY;
+            }
+            else {
+                this._connection = connection;
+            }
+        }
+        return connection;
+    }
+    refCount() {
+        return this.lift(new RefCountOperator(this));
+    }
+}
+class ConnectableSubscriber extends SubjectSubscriber {
+    constructor(destination, connectable) {
+        super(destination);
+        this.connectable = connectable;
+    }
+    _error(err) {
+        this._unsubscribe();
+        super._error(err);
+    }
+    _complete() {
+        this._unsubscribe();
+        super._complete();
+    }
+    _unsubscribe() {
+        const { connectable } = this;
+        if (connectable) {
+            this.connectable = null;
+            const connection = connectable._connection;
+            connectable._refCount = 0;
+            connectable._subject = null;
+            connectable._connection = null;
+            if (connection) {
+                connection.unsubscribe();
+            }
+        }
+    }
+}
+class RefCountOperator {
+    constructor(connectable) {
+        this.connectable = connectable;
+    }
+    call(subscriber, source) {
+        const { connectable } = this;
+        connectable._refCount++;
+        const refCounter = new RefCountSubscriber(subscriber, connectable);
+        const subscription = source._subscribe(refCounter);
+        if (!refCounter.closed) {
+            refCounter.connection = connectable.connect();
+        }
+        return subscription;
+    }
+}
+class RefCountSubscriber extends Subscriber {
+    constructor(destination, connectable) {
+        super(destination);
+        this.connectable = connectable;
+    }
+    _unsubscribe() {
+        const { connectable } = this;
+        if (!connectable) {
+            this.connection = null;
+            return;
+        }
+        this.connectable = null;
+        const refCount = connectable._refCount;
+        if (refCount <= 0) {
+            this.connection = null;
+            return;
+        }
+        connectable._refCount = refCount - 1;
+        if (refCount > 1) {
+            this.connection = null;
+            return;
+        }
+        ///
+        // Compare the local RefCountSubscriber's connection Subscription to the
+        // connection Subscription on the shared ConnectableObservable. In cases
+        // where the ConnectableObservable source synchronously emits values, and
+        // the RefCountSubscriber's dowstream Observers synchronously unsubscribe,
+        // execution continues to here before the RefCountOperator has a chance to
+        // supply the RefCountSubscriber with the shared connection Subscription.
+        // For example:
+        // ```
+        // Observable.range(0, 10)
+        //   .publish()
+        //   .refCount()
+        //   .take(5)
+        //   .subscribe();
+        // ```
+        // In order to account for this case, RefCountSubscriber should only dispose
+        // the ConnectableObservable's shared connection Subscription if the
+        // connection Subscription exists, *and* either:
+        //   a. RefCountSubscriber doesn't have a reference to the shared connection
+        //      Subscription yet, or,
+        //   b. RefCountSubscriber's connection Subscription reference is identical
+        //      to the shared connection Subscription
+        ///
+        const { connection } = this;
+        const sharedConnection = connectable._connection;
+        this.connection = null;
+        if (sharedConnection && (!connection || sharedConnection === connection)) {
+            sharedConnection.unsubscribe();
+        }
+    }
+}
+//# sourceMappingURL=ConnectableObservable.js.map
+
+class MulticastObservable extends Observable {
+    constructor(source, subjectFactory, selector) {
+        super();
+        this.source = source;
+        this.subjectFactory = subjectFactory;
+        this.selector = selector;
+    }
+    _subscribe(subscriber) {
+        const { selector, source } = this;
+        const connectable = new ConnectableObservable(source, this.subjectFactory);
+        const subscription = selector(connectable).subscribe(subscriber);
+        subscription.add(connectable.connect());
+        return subscription;
+    }
+}
+//# sourceMappingURL=MulticastObservable.js.map
+
+function multicast(subjectOrSubjectFactory, selector) {
+    let subjectFactory;
+    if (typeof subjectOrSubjectFactory === 'function') {
+        subjectFactory = subjectOrSubjectFactory;
+    }
+    else {
+        subjectFactory = function subjectFactory() {
+            return subjectOrSubjectFactory;
+        };
+    }
+    return !selector ?
+        new ConnectableObservable(this, subjectFactory) :
+        new MulticastObservable(this, subjectFactory, selector);
+}
+//# sourceMappingURL=multicast.js.map
+
+function shareSubjectFactory() {
+    return new Subject();
+}
 /**
- * Creates an output Observable which sequentially emits all values from every
- * given input Observable after the current Observable.
+ * Returns a new Observable that multicasts (shares) the original Observable. As long as there is at least one
+ * Subscriber this Observable will be subscribed and emitting data. When all subscribers have unsubscribed it will
+ * unsubscribe from the source Observable. Because the Observable is multicasting it makes the stream `hot`.
+ * This is an alias for .publish().refCount().
  *
- * <span class="informal">Concatenates multiple Observables together by
- * sequentially emitting their values, one Observable after the other.</span>
+ * <img src="./img/share.png" width="100%">
  *
- * <img src="./img/concat.png" width="100%">
- *
- * Joins multiple Observables together by subscribing to them one at a time and
- * merging their results into the output Observable. Will wait for each
- * Observable to complete before moving on to the next.
- *
- * @example <caption>Concatenate a timer counting from 0 to 3 with a synchronous sequence from 1 to 10</caption>
- * var timer = Rx.Observable.interval(1000).take(4);
- * var sequence = Rx.Observable.range(1, 10);
- * var result = Rx.Observable.concat(timer, sequence);
- * result.subscribe(x => console.log(x));
- *
- * @example <caption>Concatenate 3 Observables</caption>
- * var timer1 = Rx.Observable.interval(1000).take(10);
- * var timer2 = Rx.Observable.interval(2000).take(6);
- * var timer3 = Rx.Observable.interval(500).take(10);
- * var result = Rx.Observable.concat(timer1, timer2, timer3);
- * result.subscribe(x => console.log(x));
- *
- * @see {@link concatAll}
- * @see {@link concatMap}
- * @see {@link concatMapTo}
- *
- * @param {Observable} input1 An input Observable to concatenate with others.
- * @param {Observable} input2 An input Observable to concatenate with others.
- * More than one input Observables may be given as argument.
- * @param {Scheduler} [scheduler=null] An optional Scheduler to schedule each
- * Observable subscription on.
- * @return {Observable} All values of each passed Observable merged into a
- * single Observable, in order, in serial fashion.
- * @static true
- * @name concat
+ * @return {Observable<T>} an Observable that upon connection causes the source Observable to emit items to its Observers
+ * @method share
  * @owner Observable
  */
-function concatStatic(...observables) {
-    let scheduler = null;
-    let args = observables;
-    if (isScheduler(args[observables.length - 1])) {
-        scheduler = args.pop();
-    }
-    return new ArrayObservable(observables, scheduler).lift(new MergeAllOperator(1));
+function share() {
+    return multicast.call(this, shareSubjectFactory).refCount();
 }
-//# sourceMappingURL=concat.js.map
 
-function startWith(...array) {
-    let scheduler = array[array.length - 1];
-    if (isScheduler(scheduler)) {
-        array.pop();
-    }
-    else {
-        scheduler = null;
-    }
-    const len = array.length;
-    if (len === 1) {
-        return concatStatic(new ScalarObservable(array[0], scheduler), this);
-    }
-    else if (len > 1) {
-        return concatStatic(new ArrayObservable(array, scheduler), this);
-    }
-    else {
-        return concatStatic(new EmptyObservable(scheduler), this);
-    }
-}
-//# sourceMappingURL=startWith.js.map
+//# sourceMappingURL=share.js.map
 
-Observable.prototype.startWith = startWith;
-//# sourceMappingURL=startWith.js.map
+Observable.prototype.share = share;
+//# sourceMappingURL=share.js.map
 
 const __render0$5 = renderer(makeTemplate(`
         <header>
-            <h3 class="text-center" data-bind>Page <text-node></text-node> of <text-node></text-node></h3>
+            <h3 class="text-center" data-bind><text-node></text-node> Records - Page <text-node></text-node> of <text-node></text-node></h3>
         </header>
         <section style="position:relative;" data-bind>
             <!-- block -->
@@ -2475,79 +2958,84 @@ const __render3$1 = renderer(makeTemplate(`
         <img style="height: 100%;" src="https://www.createwebsite.net/wp-content/uploads/2015/09/GD.gif">
     </div>
 `));
-const __render4$1 = renderer(makeTemplate(`<li data-bind><text-node></text-node></li>`));
+const __render4$1 = renderer(makeTemplate(`
+            <tr>
+                <td data-bind><text-node></text-node></td>
+                <td data-bind><text-node></text-node></td>
+                <td data-bind><text-node></text-node></td>
+                <td data-bind><text-node></text-node></td>
+                <td data-bind><text-node></text-node></td>
+                <td data-bind><text-node></text-node></td>
+            </tr>`));
 const __render5$1 = renderer(makeTemplate(`
-    <ul data-bind>
+    <table class="table is-striped is-hoverable is-fullwidth" data-bind>
+        <thead>
+            <tr>
+                <th>name</th>
+                <th>birth year</th>
+                <th>eye color</th>
+                <th>hair color</th>
+                <th>height</th>
+                <th>mass</th>
+            </tr>
+        </thead>
         <!-- component start --><!-- component end -->
-    </ul>
+    </table>
 `));
 const API = 'https://swapi.co/api/people/';
 const PER_PAGE = 10;
+const getPageNumber = url => {
+  const search = url.split('?')[1];
+  return search && new URLSearchParams(search).get('page') || '1';
+};
+const fetchPage = url => fetch(url).then(r => r.json()).then(r => (r.pageNumber = getPageNumber(url), r));
 var starWars = () => {
-  const page = new Subject();
+  const url = new Subject();
   const loading = new Subject();
   const cache = new Map();
-  const getPage = url => {
-    const search = url.split('?')[1];
-    let num = 1;
-    if (search) {
-      const params = new URLSearchParams(search);
-      if (params.has('page')) num = params.get('page');
-    }
-    if (cache.has(num)) {
-      page.next(cache.get(num));
-    } else {
-      loading.next(true);
-      fetch(url).then(r => r.json()).then(res => {
-        res.pageNumber = num;
-        cache.set(num, res);
-        loading.next(false);
-        page.next(res);
-      }).catch(console.log);
-    }
-  };
-  getPage(API);
-  const paging = PagingButtons(page, getPage);
-  return Viewer(page.startWith({
-    results: Array(PER_PAGE).fill()
-  }), loading.startWith(true), paging);
+  const page = url.startWith(`${API}?page=1`).do(() => loading.next(true)).do(url => cache.has(url) || cache.set(url, fetchPage(url))).mergeMap(url => cache.get(url)).do(() => loading.next(false)).share();
+  const paging = PagingButtons(page, url);
+  return Viewer(page, loading.startWith(true), paging);
 };
 const Viewer = (__ref0, loading, Paging) => {
   const count = __ref0.child('count');
   const pageNumber = __ref0.child('pageNumber');
   const results = __ref0.child('results');
   const {__fragment, __nodes} = __render0$5();
-  const __child0 = __nodes[0].childNodes[1];
-  const __child1 = __nodes[0].childNodes[3];
-  const __child2 = __nodes[1].childNodes[1];
-  const __child3 = __nodes[1].childNodes[3];
-  const __child4 = __nodes[2].childNodes[1];
-  const __sub0 = pageNumber.subscribe(textBinder(__child0));
-  const __sub1 = map(count, count => Math.ceil(count / PER_PAGE), textBinder(__child1));
-  const __sub2b = __blockBinder(__child2);
-  const __sub2 = map(loading, loading => loading && Spinner, __sub2b.observer);
+  const __child0 = __nodes[0].childNodes[0];
+  const __child1 = __nodes[0].childNodes[2];
+  const __child2 = __nodes[0].childNodes[4];
+  const __child3 = __nodes[1].childNodes[1];
+  const __child4 = __nodes[1].childNodes[3];
+  const __child5 = __nodes[2].childNodes[1];
+  const __sub0 = count.subscribe(textBinder(__child0));
+  const __sub1 = pageNumber.subscribe(textBinder(__child1));
+  const __sub2 = map(count, count => Math.ceil(count / PER_PAGE), textBinder(__child2));
   const __sub3b = __blockBinder(__child3);
-  __sub3b.observer(people(results));
+  const __sub3 = map(loading, loading => loading && Spinner, __sub3b.observer);
   const __sub4b = __blockBinder(__child4);
-  __sub4b.observer(Paging);
+  __sub4b.observer(people(results));
+  const __sub5b = __blockBinder(__child5);
+  __sub5b.observer(Paging);
   __fragment.unsubscribe = () => {
     __sub0.unsubscribe();
     __sub1.unsubscribe();
     __sub2.unsubscribe();
-    __sub2b.unsubscribe();
+    __sub3.unsubscribe();
     __sub3b.unsubscribe();
     __sub4b.unsubscribe();
+    __sub5b.unsubscribe();
   };
   return __fragment;
 };
-const PagingButtons = (__ref1, getPage) => {
+const PagingButtons = (__ref1, setUrl) => {
   const previous = __ref1.child('previous');
   const next = __ref1.child('next');
-  const pagingButton = label => url => {
+  const Button = (label, url) => {
     const {__fragment, __nodes} = __render1$5();
     const __child2 = __nodes[0].childNodes[0];
     const __sub0 = map(url, url => !url, attrBinder(__nodes[0], 'disabled'));
-    const __sub1 = map(url, url => () => getPage(url), attrBinder(__nodes[0], 'onclick'));
+    const __sub1 = map(url, url => () => setUrl.next(url), attrBinder(__nodes[0], 'onclick'));
     textBinder(__child2)(label);
     __fragment.unsubscribe = () => {
       __sub0.unsubscribe();
@@ -2555,15 +3043,13 @@ const PagingButtons = (__ref1, getPage) => {
     };
     return __fragment;
   };
-  const PreviousButton = pagingButton('Previous');
-  const NextButton = pagingButton('Next');
   const {__fragment, __nodes} = __render2$2();
   const __child0 = __nodes[0].childNodes[1];
   const __child1 = __nodes[0].childNodes[3];
   const __sub0b = __blockBinder(__child0);
-  __sub0b.observer(PreviousButton(previous));
+  __sub0b.observer(Button('Previous', previous));
   const __sub1b = __blockBinder(__child1);
-  __sub1b.observer(NextButton(next));
+  __sub1b.observer(Button('Next', next));
   __fragment.unsubscribe = () => {
     __sub0b.unsubscribe();
     __sub1b.unsubscribe();
@@ -2575,14 +3061,29 @@ const Spinner = () => {
 };
 const people = people => {
   const {__fragment, __nodes} = __render5$1();
-  const __child0 = __nodes[0].childNodes[2];
+  const __child0 = __nodes[0].childNodes[4];
   const __sub0b = makeOverlay(people);
   propBinder(__sub0b, 'map')(person => {
     const {__fragment, __nodes} = __render4$1();
     const __child0 = __nodes[0].childNodes[0];
+    const __child1 = __nodes[1].childNodes[0];
+    const __child2 = __nodes[2].childNodes[0];
+    const __child3 = __nodes[3].childNodes[0];
+    const __child4 = __nodes[4].childNodes[0];
+    const __child5 = __nodes[5].childNodes[0];
     const __sub0 = map(person, person => person.name, textBinder(__child0));
+    const __sub1 = map(person, person => person.birth_year, textBinder(__child1));
+    const __sub2 = map(person, person => person.eye_color, textBinder(__child2));
+    const __sub3 = map(person, person => person.hair_color, textBinder(__child3));
+    const __sub4 = map(person, person => person.height, textBinder(__child4));
+    const __sub5 = map(person, person => person.mass, textBinder(__child5));
     __fragment.unsubscribe = () => {
       __sub0.unsubscribe();
+      __sub1.unsubscribe();
+      __sub2.unsubscribe();
+      __sub3.unsubscribe();
+      __sub4.unsubscribe();
+      __sub5.unsubscribe();
     };
     return __fragment;
   });
@@ -2594,18 +3095,36 @@ const people = people => {
 };
 
 const __render0 = renderer(makeTemplate(`
-                    <li onclick="" data-bind><text-node></text-node></li>
-                `));
+                        <a href="" class="navbar-item" data-bind><text-node></text-node></a>
+                    `));
 const __render1 = renderer(makeTemplate(`
     <header>
-        <nav>
-            <ul data-bind>
-                <!-- block -->
-            </ul>
+        <nav class="navbar" role="navigation" aria-label="main navigation">
+            <div class="navbar-brand">
+                <div class="navbar-item">
+                    <h6 class="title is-6">Azoth Example Apps</h6>
+                </div>
+            </div>
+            <div class="navbar-menu is-active">
+                <div class="navbar-start">
+                </div>
+                <div class="navbar-end" data-bind>
+                    <!-- block -->
+                </div>                
+            </div>
         </nav>
     </header>
     <main>
-        <div data-bind><!-- block --></div>
+        <section class="hero is-primary">
+            <div class="hero-body">
+            <div class="container">
+                <h1 class="title" data-bind><text-node></text-node></h1>
+            </div>
+            </div>
+        </section>
+        <section class="container" data-bind>
+            <!-- block -->
+        </section>
     </main>
 `));
 const apps = {
@@ -2616,29 +3135,35 @@ const apps = {
   'Star Wars': starWars
 };
 var app = () => {
-  const current = apps[window.location.hash.slice(1)];
-  const app = new BehaviorSubject(current || hello);
-  const change = value => void app.next(value);
-  return App(apps, app, change);
+  const app = Observable.fromEvent(window, 'hashchange').startWith(null).map(() => window.location.hash.slice(1)).map(name => ({
+    name: name || 'Hello World',
+    app: apps[name] || hello
+  }));
+  return App(Object.keys(apps), app);
 };
-const App = (apps, app, change) => {
+const App = (names, __ref0) => {
+  const name = __ref0.child('name');
+  const app = __ref0.child('app');
   const {__fragment, __nodes} = __render1();
   const __child0 = __nodes[0].childNodes[1];
   const __child1 = __nodes[1].childNodes[0];
+  const __child2 = __nodes[2].childNodes[1];
   const __sub0b = __blockBinder(__child0);
-  __sub0b.observer(Object.keys(apps).map(name => {
+  __sub0b.observer(names.map(name => {
     const {__fragment, __nodes} = __render0();
     const __child1 = __nodes[0].childNodes[0];
-    attrBinder(__nodes[0], 'onclick')(() => change(apps[name]));
+    attrBinder(__nodes[0], 'href')(`#${name}`);
     textBinder(__child1)(name);
     return __fragment;
   }));
-  const __sub1b = __blockBinder(__child1);
-  const __sub1 = app.subscribe(__sub1b.observer);
+  const __sub1 = name.subscribe(textBinder(__child1));
+  const __sub2b = __blockBinder(__child2);
+  const __sub2 = app.subscribe(__sub2b.observer);
   __fragment.unsubscribe = () => {
     __sub0b.unsubscribe();
     __sub1.unsubscribe();
-    __sub1b.unsubscribe();
+    __sub2.unsubscribe();
+    __sub2b.unsubscribe();
   };
   return __fragment;
 };

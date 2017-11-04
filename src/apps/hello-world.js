@@ -19,18 +19,26 @@ export default () => {
 };
 
 const TextInput = (prop, val, change) => _`
-    <div>
-        ${prop}:
-        <input value=${val} onkeyup=${({ target }) => change({ [prop]: target.value })}>
+    <div class="field">
+        <label class="label is-capitalized">${prop}:</label>
+        <div class="control">
+            <input class="input" 
+                value=${val} 
+                onkeyup=${({ target }) => change({ [prop]: target.value })}
+            >
+        </div>
     </div>
 `;
 
 const hello = ({ name, salutation }=$, change) => {
     return _`
-        <p>*${salutation} *${name}!</p>
-        <div>
-            $${TextInput('salutation', salutation, change)}#
-            $${TextInput('name', name, change)}#
-        </div>
+        <section class="section">
+                <p class="is-size-4">*${salutation} *${name}!</p>
+                <hr>
+                <div class="container">
+                    $${TextInput('salutation', salutation, change)}#
+                    $${TextInput('name', name, change)}#
+                </div>
+        </section>
     `;
 };
